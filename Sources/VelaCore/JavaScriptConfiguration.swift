@@ -20,6 +20,7 @@ enum JavaScriptConfiguration {
     Vela.hotkey("option+f", Vela.showLauncher);
     Vela.hotkey("command+shift+space", Vela.showLauncher);
     Vela.hotkey("command+shift+v", Vela.showClipboard);
+    Vela.hotkey("option+tab", Vela.showSwitcher);
     Vela.hotkey("command+shift+tab", Vela.showSwitcher);
     Vela.hotkey("option+[", () => Vela.window("leftHalf"));
     Vela.hotkey("option+]", () => Vela.window("rightHalf"));
@@ -38,6 +39,14 @@ enum JavaScriptConfiguration {
       keywords: ["project", "code"],
       run: () => Vela.shell("open ~/workspace"),
     });
+
+    // Vela.snippet({
+    //   id: "signature",
+    //   title: "Signature",
+    //   group: "Pinned",
+    //   value: "Your fixed text",
+    //   keywords: ["fixed", "template"],
+    // });
     """
 
     static func load(from url: URL) throws -> VelaConfiguration {
@@ -46,6 +55,7 @@ enum JavaScriptConfiguration {
         var configuration = VelaConfiguration()
         var hotkeys: [HotkeyConfiguration] = []
         var commands: [CommandConfiguration] = []
+        var snippets: [SnippetConfiguration] = []
         var failure: String?
         context.exceptionHandler = { _, exception in failure = exception?.toString() }
 
@@ -70,6 +80,17 @@ enum JavaScriptConfiguration {
             let keywords = (value.forProperty("keywords")?.toArray() as? [String]) ?? []
             commands.append(.init(id: id, title: title, subtitle: subtitle, keywords: keywords, action: JavaScriptConfiguration.commandAction(from: descriptor)))
         }
+        let snippet: @convention(block) (JSValue) -> Void = { value in
+            guard let id = value.forProperty("id")?.toString(),
+                  let title = value.forProperty("title")?.toString(),
+                  let text = value.forProperty("value")?.toString() else {
+                failure = "Vela.snippet requires id, title, and value"
+                return
+            }
+            let group = value.forProperty("group")?.toString()
+            let keywords = (value.forProperty("keywords")?.toArray() as? [String]) ?? []
+            snippets.append(.init(id: id, title: title, value: text, group: group, keywords: keywords))
+        }
         let actionObject: @convention(block) (String) -> NSDictionary = { type in ["type": type] }
         let shellAction: @convention(block) (String) -> NSDictionary = { value in ["type": "shell", "value": value] }
         let urlAction: @convention(block) (String) -> NSDictionary = { value in ["type": "openURL", "value": value] }
@@ -77,6 +98,7 @@ enum JavaScriptConfiguration {
         vela.setObject(configure, forKeyedSubscript: "configure" as NSString)
         vela.setObject(hotkey, forKeyedSubscript: "hotkey" as NSString)
         vela.setObject(command, forKeyedSubscript: "command" as NSString)
+        vela.setObject(snippet, forKeyedSubscript: "snippet" as NSString)
         vela.setObject(actionObject, forKeyedSubscript: "window" as NSString)
         vela.setObject(shellAction, forKeyedSubscript: "shell" as NSString)
         vela.setObject(urlAction, forKeyedSubscript: "openURL" as NSString)
@@ -90,6 +112,7 @@ enum JavaScriptConfiguration {
         if let failure { throw ConfigurationError.invalid(failure) }
         configuration.hotkeys = hotkeys
         configuration.commands = commands
+        configuration.snippets = snippets
         return configuration
     }
 

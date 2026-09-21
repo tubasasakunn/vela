@@ -12,12 +12,38 @@ public struct VelaWindow: Identifiable, Equatable {
 }
 
 public final class WindowController {
-    public init() {}
+    private var recentBundleIdentifiers: [String] = []
+    private var activationObserver: NSObjectProtocol?
+    public init() {
+        if let identifier = NSWorkspace.shared.frontmostApplication?.bundleIdentifier {
+            recentBundleIdentifiers = [identifier]
+        }
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  let identifier = application.bundleIdentifier,
+                  application.activationPolicy == .regular else { return }
+            self?.recentBundleIdentifiers.removeAll(where: { $0 == identifier })
+            self?.recentBundleIdentifiers.insert(identifier, at: 0)
+        }
+    }
+    deinit {
+        if let activationObserver { NSWorkspace.shared.notificationCenter.removeObserver(activationObserver) }
+    }
     public var accessibilityTrusted: Bool { AXIsProcessTrusted() }
     public func requestAccessibilityPermission() { AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary) }
     public func windows(includeMinimized: Bool = false) -> [VelaWindow] {
-        NSWorkspace.shared.runningApplications
+        let recency = Dictionary(uniqueKeysWithValues: recentBundleIdentifiers.enumerated().map { ($0.element, $0.offset) })
+        return NSWorkspace.shared.runningApplications
             .filter { $0.activationPolicy == .regular && !$0.isTerminated }
+            .sorted {
+                let lhs = $0.bundleIdentifier.flatMap { recency[$0] } ?? Int.max
+                let rhs = $1.bundleIdentifier.flatMap { recency[$0] } ?? Int.max
+                return lhs < rhs
+            }
             .flatMap { application in windows(for: application, includeMinimized: includeMinimized) }
     }
     public func focus(_ window: VelaWindow) {

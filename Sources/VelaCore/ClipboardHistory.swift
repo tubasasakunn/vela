@@ -14,6 +14,7 @@ public final class ClipboardHistory: @unchecked Sendable {
     }
     public func stop() { timer?.invalidate(); timer = nil }
     public func copy(_ entry: ClipboardEntry) { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(entry.value, forType: .string) }
+    public func copyText(_ value: String) { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(value, forType: .string) }
     public func clear() { entries.removeAll(); persist() }
     private func captureIfNeeded() {
         let pasteboard = NSPasteboard.general

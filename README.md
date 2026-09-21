@@ -47,6 +47,7 @@ Vela.configure({
 Vela.hotkey("command+shift+space", Vela.showLauncher);
 Vela.hotkey("option+f", Vela.showLauncher);
 Vela.hotkey("command+shift+v", Vela.showClipboard);
+Vela.hotkey("option+tab", Vela.showSwitcher);
 Vela.hotkey("command+option+left", () => Vela.window("leftHalf"));
 
 Vela.command({
@@ -54,6 +55,14 @@ Vela.command({
   title: "Open workspace",
   keywords: ["project", "code"],
   run: () => Vela.shell("open ~/workspace"),
+});
+
+Vela.snippet({
+  id: "reply-thanks",
+  title: "Thanks",
+  group: "Replies",
+  value: "Thank you for your message.",
+  keywords: ["reply"],
 });
 ```
 
@@ -64,6 +73,7 @@ Vela.command({
 - `Vela.hotkey(keys, Vela.showClipboard | Vela.showSwitcher | Vela.quitFrontmostApplication)`
 - `Vela.hotkey(keys, () => Vela.window("leftHalf" | "rightHalf" | "toggleMaximize" | "minimize" | "close" | "nextDisplay" | "previousDisplay" | "focusPrevious"))`
 - `Vela.command({ id, title, subtitle?, keywords?, run })`
+- `Vela.snippet({ id, title, value, group?, keywords? })`
 - command actions: `Vela.shell(command)`, `Vela.openURL(url)`, and
   `Vela.application(bundleIdentifier)`
 
@@ -79,6 +89,7 @@ vela show search
 vela show clipboard
 vela run open-workspace
 vela clipboard list
+vela snippets import-clipy
 vela permissions status
 vela permissions setup
 vela permissions request accessibility

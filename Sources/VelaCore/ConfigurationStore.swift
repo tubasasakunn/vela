@@ -39,6 +39,11 @@ public final class ConfigurationStore {
         }
         let ids = config.commands.map(\.id)
         guard Set(ids).count == ids.count else { throw ConfigurationError.invalid("Command ids must be unique") }
+        let snippetIDs = config.snippets.map(\.id)
+        guard Set(snippetIDs).count == snippetIDs.count else { throw ConfigurationError.invalid("Snippet ids must be unique") }
+        guard config.snippets.allSatisfy({ !$0.id.isEmpty && !$0.title.isEmpty && !$0.value.isEmpty }) else {
+            throw ConfigurationError.invalid("Snippet id, title, and value must not be empty")
+        }
         return config
     }
 }

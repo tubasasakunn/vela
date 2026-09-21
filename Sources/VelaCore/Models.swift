@@ -6,19 +6,22 @@ public struct VelaConfiguration: Codable, Equatable {
     public var switcher: SwitcherConfiguration
     public var hotkeys: [HotkeyConfiguration]
     public var commands: [CommandConfiguration]
+    public var snippets: [SnippetConfiguration]
 
     public init(
         launcher: LauncherConfiguration = .init(),
         clipboard: ClipboardConfiguration = .init(),
         switcher: SwitcherConfiguration = .init(),
         hotkeys: [HotkeyConfiguration] = [],
-        commands: [CommandConfiguration] = []
+        commands: [CommandConfiguration] = [],
+        snippets: [SnippetConfiguration] = []
     ) {
         self.launcher = launcher
         self.clipboard = clipboard
         self.switcher = switcher
         self.hotkeys = hotkeys
         self.commands = commands
+        self.snippets = snippets
     }
 
     public static let `default` = VelaConfiguration(
@@ -26,6 +29,7 @@ public struct VelaConfiguration: Codable, Equatable {
             .init(keys: ["option", "f"], action: .launcher),
             .init(keys: ["command", "shift", "space"], action: .launcher),
             .init(keys: ["command", "shift", "v"], action: .clipboard),
+            .init(keys: ["option", "tab"], action: .switcher),
             .init(keys: ["command", "shift", "tab"], action: .switcher),
         ]
     )
@@ -105,6 +109,21 @@ public struct CommandConfiguration: Codable, Equatable, Identifiable {
     public var action: CommandAction
     public init(id: String, title: String, subtitle: String? = nil, keywords: [String] = [], action: CommandAction) {
         self.id = id; self.title = title; self.subtitle = subtitle; self.keywords = keywords; self.action = action
+    }
+}
+
+public struct SnippetConfiguration: Codable, Equatable, Identifiable {
+    public var id: String
+    public var title: String
+    public var value: String
+    public var group: String?
+    public var keywords: [String]
+    public init(id: String, title: String, value: String, group: String? = nil, keywords: [String] = []) {
+        self.id = id
+        self.title = title
+        self.value = value
+        self.group = group
+        self.keywords = keywords
     }
 }
 

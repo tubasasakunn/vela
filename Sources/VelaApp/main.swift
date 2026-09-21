@@ -8,6 +8,14 @@ struct VelaAppMain {
     static func main() {
         let application = NSApplication.shared
         application.setActivationPolicy(.accessory)
+        let currentProcess = NSRunningApplication.current.processIdentifier
+        let previousInstances = NSRunningApplication.runningApplications(withBundleIdentifier: "dev.vela.app")
+            .filter { $0.processIdentifier != currentProcess }
+        previousInstances.forEach { $0.terminate() }
+        let deadline = Date().addingTimeInterval(1)
+        while previousInstances.contains(where: { !$0.isTerminated }), Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.04))
+        }
         let delegate = VelaDelegate()
         application.delegate = delegate
         application.run()
@@ -149,7 +157,7 @@ private final class VelaDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-private enum OverlayMode { case launcher, clipboard, switcher }
+private enum OverlayMode: Equatable { case launcher, clipboard, switcher }
 
 private final class KeyPanel: NSPanel {
     override var canBecomeKey: Bool { true }
@@ -162,6 +170,9 @@ private final class OverlayController {
     private let executeAction: (VelaAction) -> Void
     private let model = PaletteModel()
     private var previousApplication: NSRunningApplication?
+    private var activeMode: OverlayMode?
+    private var keyMonitor: Any?
+    private var switcherModifier: NSEvent.ModifierFlags?
     private lazy var panel: NSPanel = {
         let panel = KeyPanel(contentRect: .init(x: 0, y: 0, width: 680, height: 448), styleMask: [.titled, .fullSizeContentView, .utilityWindow], backing: .buffered, defer: false)
         panel.titleVisibility = .hidden
@@ -172,7 +183,7 @@ private final class OverlayController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.backgroundColor = .clear
         panel.isOpaque = false
-        panel.contentView = NSHostingView(rootView: PaletteView(model: model, select: { [weak self] item in self?.select(item) }, close: { [weak self] in self?.panel.orderOut(nil) }))
+        panel.contentView = NSHostingView(rootView: PaletteView(model: model, select: { [weak self] item in self?.select(item) }, close: { [weak self] in self?.hide() }))
         return panel
     }()
 
@@ -181,30 +192,75 @@ private final class OverlayController {
     }
 
     func show(_ mode: OverlayMode, configuration: VelaConfiguration) {
+        if mode == .switcher, activeMode == .switcher, panel.isVisible {
+            model.moveSelection(.down)
+            return
+        }
         previousApplication = NSWorkspace.shared.frontmostApplication
+        activeMode = mode
         switch mode {
         case .launcher: model.configureLauncher(configuration: configuration)
-        case .clipboard: model.configureClipboard(entries: clipboard.entries)
+        case .clipboard: model.configureClipboard(entries: clipboard.entries, snippets: configuration.snippets)
         case .switcher: model.configureSwitcher(windows: windowController.windows(includeMinimized: configuration.switcher.includeMinimizedWindows), accessibilityTrusted: windowController.accessibilityTrusted)
         }
         panel.center()
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
+        installKeyMonitor()
+        if mode == .switcher {
+            let flags = CGEventSource.flagsState(.combinedSessionState)
+            switcherModifier = flags.contains(.maskAlternate) ? .option : (flags.contains(.maskControl) ? .control : nil)
+        } else {
+            switcherModifier = nil
+        }
     }
 
     private func select(_ item: PaletteItem) {
-        panel.orderOut(nil)
+        hide()
         switch item.kind {
         case let .command(command): _ = try? CommandExecutor.run(command)
         case let .application(url): NSWorkspace.shared.openApplication(at: url, configuration: .init())
-        case let .clipboard(entry): paste(entry)
+        case let .settings(url): NSWorkspace.shared.open(url)
+        case let .clipboard(entry): paste(entry.value)
+        case let .snippet(snippet): paste(snippet.value)
         case let .window(window): windowController.focus(window)
         case let .action(action): executeAction(action)
         }
     }
 
-    private func paste(_ entry: ClipboardEntry) {
-        clipboard.copy(entry)
+    private func installKeyMonitor() {
+        guard keyMonitor == nil else { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
+            guard let self, self.panel.isVisible else { return event }
+            if event.type == .flagsChanged,
+               self.activeMode == .switcher,
+               let modifier = self.switcherModifier,
+               !event.modifierFlags.contains(modifier) {
+                if let item = self.model.selectedItem { self.select(item) }
+                return nil
+            }
+            guard event.type == .keyDown else { return event }
+            switch event.keyCode {
+            case 125: self.model.moveSelection(.down); return nil
+            case 126: self.model.moveSelection(.up); return nil
+            case 36, 76:
+                if let item = self.model.selectedItem { self.select(item) }
+                return nil
+            case 53: self.hide(); return nil
+            default: return event
+            }
+        }
+    }
+
+    private func hide() {
+        panel.orderOut(nil)
+        activeMode = nil
+        switcherModifier = nil
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor); self.keyMonitor = nil }
+    }
+
+    private func paste(_ value: String) {
+        clipboard.copyText(value)
         guard let application = previousApplication, application != NSRunningApplication.current else { return }
         application.activate()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
@@ -231,21 +287,31 @@ private final class PaletteModel: ObservableObject {
         title = "Vela"; placeholder = "Search commands and applications"; notice = nil; query = ""
         var next = configuration.commands.map { PaletteItem(command: $0) }
         if configuration.launcher.applicationSearch {
+            next += settingsItems()
             next += installedApplications()
         }
         items = next
         selectedID = filteredItems.first?.id
     }
-    func configureClipboard(entries: [ClipboardEntry]) {
+    func configureClipboard(entries: [ClipboardEntry], snippets: [SnippetConfiguration]) {
         title = "Clipboard"; placeholder = "Search clipboard history"; notice = nil; query = ""
-        items = entries.map(PaletteItem.init(clipboard:))
+        items = snippets.map(PaletteItem.init(snippet:)) + entries.map(PaletteItem.init(clipboard:))
         selectedID = filteredItems.first?.id
     }
     func configureSwitcher(windows: [VelaWindow], accessibilityTrusted: Bool) {
         title = "Windows"; placeholder = "Search open windows"; query = ""
-        notice = accessibilityTrusted ? nil : "Allow Accessibility access in System Settings to list and focus windows."
-        items = windows.map(PaletteItem.init(window:))
-        selectedID = filteredItems.first?.id
+        notice = nil
+        if accessibilityTrusted {
+            items = windows.map(PaletteItem.init(window:))
+        } else {
+            items = NSWorkspace.shared.runningApplications
+                .filter { $0.activationPolicy == .regular && !$0.isTerminated }
+                .compactMap { application in
+                    guard let url = application.bundleURL, let name = application.localizedName else { return nil }
+                    return PaletteItem(application: name, url: url, detail: application.bundleIdentifier)
+                }
+        }
+        selectedID = (filteredItems.dropFirst().first ?? filteredItems.first)?.id
     }
     var filteredItems: [PaletteItem] {
         let term = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -300,25 +366,62 @@ private final class PaletteModel: ObservableObject {
         }
         return applications.values.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
+
+    private func settingsItems() -> [PaletteItem] {
+        [
+            ("Wi-Fi", "wifi", "x-apple.systempreferences:com.apple.wifi-settings-extension"),
+            ("Bluetooth", "bluetooth", "x-apple.systempreferences:com.apple.BluetoothSettings"),
+            ("Network", "network", "x-apple.systempreferences:com.apple.Network-Settings.extension"),
+            ("Displays", "display", "x-apple.systempreferences:com.apple.Displays-Settings.extension"),
+            ("Sound", "speaker.wave.2", "x-apple.systempreferences:com.apple.Sound-Settings.extension"),
+            ("Keyboard", "keyboard", "x-apple.systempreferences:com.apple.Keyboard-Settings.extension"),
+            ("Privacy & Security", "hand.raised", "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension"),
+        ].compactMap { title, symbol, rawURL in
+            URL(string: rawURL).map { PaletteItem(settings: title, url: $0, symbol: symbol) }
+        }
+    }
 }
 
 private struct PaletteItem: Identifiable {
-    enum Kind { case command(CommandConfiguration), application(URL), clipboard(ClipboardEntry), window(VelaWindow), action(VelaAction) }
-    let id = UUID(); let title: String; let subtitle: String?; let symbol: String; let kind: Kind
-    var searchText: String { title + " " + (subtitle ?? "") }
-    init(command: CommandConfiguration) { title = command.title; subtitle = command.subtitle; symbol = "terminal"; kind = .command(command) }
-    init(application: String, url: URL, detail: String?) { title = application; subtitle = detail; symbol = "app"; kind = .application(url) }
+    enum Kind { case command(CommandConfiguration), application(URL), settings(URL), clipboard(ClipboardEntry), snippet(SnippetConfiguration), window(VelaWindow), action(VelaAction) }
+    let id = UUID(); let title: String; let subtitle: String?; let symbol: String; let icon: NSImage?; let kind: Kind
+    var searchText: String {
+        let base = title + " " + (subtitle ?? "")
+        switch kind {
+        case let .command(command): return base + " " + command.keywords.joined(separator: " ")
+        case let .snippet(snippet): return base + " " + snippet.keywords.joined(separator: " ")
+        default: return base
+        }
+    }
+    init(command: CommandConfiguration) { title = command.title; subtitle = command.subtitle; symbol = "terminal"; icon = nil; kind = .command(command) }
+    init(application: String, url: URL, detail: String?) {
+        title = application; subtitle = detail; symbol = "app"; icon = NSWorkspace.shared.icon(forFile: url.path); kind = .application(url)
+    }
+    init(settings: String, url: URL, symbol: String) {
+        title = settings; subtitle = "System Settings"; self.symbol = symbol; icon = nil; kind = .settings(url)
+    }
     init(clipboard: ClipboardEntry) {
         title = clipboard.value.replacingOccurrences(of: "\n", with: " ")
-        let sourceName = clipboard.sourceBundleIdentifier
-            .flatMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }
-            .flatMap { Bundle(url: $0)?.object(forInfoDictionaryKey: "CFBundleName") as? String }
+        let sourceURL = clipboard.sourceBundleIdentifier.flatMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }
+        let sourceName = sourceURL.flatMap { Bundle(url: $0)?.object(forInfoDictionaryKey: "CFBundleName") as? String }
         let relative = RelativeDateTimeFormatter().localizedString(for: clipboard.createdAt, relativeTo: .now)
         subtitle = [sourceName, relative].compactMap { $0 }.joined(separator: " · ")
         symbol = "doc.on.clipboard"
+        icon = sourceURL.map { NSWorkspace.shared.icon(forFile: $0.path) }
         kind = .clipboard(clipboard)
     }
-    init(window: VelaWindow) { title = window.title; subtitle = window.applicationName; symbol = "macwindow"; kind = .window(window) }
+    init(snippet: SnippetConfiguration) {
+        title = snippet.title
+        subtitle = [snippet.group, snippet.value].compactMap { $0 }.joined(separator: " · ")
+        symbol = "pin.fill"
+        icon = nil
+        kind = .snippet(snippet)
+    }
+    init(window: VelaWindow) {
+        title = window.title; subtitle = window.applicationName; symbol = "macwindow"
+        icon = window.bundleIdentifier.flatMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }.map { NSWorkspace.shared.icon(forFile: $0.path) }
+        kind = .window(window)
+    }
 }
 
 private struct PaletteView: View {
@@ -369,7 +472,15 @@ private struct PaletteView: View {
                         ForEach(model.filteredItems) { item in
                             Button { select(item) } label: {
                                 HStack(spacing: 12) {
-                                    Image(systemName: item.symbol).frame(width: 20).foregroundStyle(.secondary)
+                                    Group {
+                                        if let icon = item.icon {
+                                            Image(nsImage: icon).resizable().scaledToFit()
+                                        } else {
+                                            Image(systemName: item.symbol).resizable().scaledToFit().padding(5)
+                                        }
+                                    }
+                                    .frame(width: 30, height: 30)
+                                    .foregroundStyle(.secondary)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(item.title).lineLimit(1)
                                         if let subtitle = item.subtitle { Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
