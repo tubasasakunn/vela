@@ -7,6 +7,18 @@ public struct PermissionSnapshot: Codable {
         self.states = Dictionary(uniqueKeysWithValues: states.map { ($0.key.cliName, $0.value) })
         self.checkedAt = checkedAt
     }
+
+    public func isGranted(_ permission: VelaPermission) -> Bool {
+        states[permission.cliName] == true
+    }
+
+    public var grantedCount: Int {
+        VelaPermission.allCases.count(where: isGranted)
+    }
+
+    public var nextMissingPermission: VelaPermission? {
+        VelaPermission.allCases.first { !isGranted($0) }
+    }
 }
 
 public enum PermissionStatusStore {
