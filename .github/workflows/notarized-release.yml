@@ -1,0 +1,132 @@
+name: Notarized release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without the v prefix (leave empty to bump the latest patch)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: notarized-release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-14
+    timeout-minutes: 45
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+      CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_APPLICATION_P12_BASE64 }}
+      CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_APPLICATION_P12_PASSWORD }}
+      KEYCHAIN_PASSWORD: ${{ secrets.RELEASE_KEYCHAIN_PASSWORD }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Confirm arm64 runner
+        shell: bash
+        run: test "$(uname -m)" = arm64
+
+      - name: Validate required release secrets
+        shell: bash
+        run: |
+          for name in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_CONTENT CERTIFICATE_BASE64 CERTIFICATE_PASSWORD KEYCHAIN_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "Required GitHub Actions secret is missing: $name" >&2
+              exit 1
+            fi
+          done
+
+      - name: Install Developer ID signing certificate
+        shell: bash
+        run: |
+          certificate_path="$RUNNER_TEMP/DeveloperIDApplication.p12"
+          keychain_path="$RUNNER_TEMP/vela-release.keychain-db"
+          printf '%s' "$CERTIFICATE_BASE64" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 3600 "$keychain_path"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$certificate_path" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security list-keychain -d user -s "$keychain_path" login.keychain-db
+          security find-identity -v -p codesigning "$keychain_path"
+
+      - name: Choose release version
+        id: version
+        shell: bash
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          version="$(python3 - <<'PY'
+          import os
+          import re
+          import subprocess
+
+          requested = os.environ.get("REQUESTED_VERSION", "").strip()
+          if requested:
+              if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", requested):
+                  raise SystemExit("version must have the form MAJOR.MINOR.PATCH")
+              print(requested)
+              raise SystemExit
+
+          sha = os.environ["GITHUB_SHA"]
+          pointed_tags = subprocess.check_output(
+              ["git", "tag", "--points-at", sha, "--list", "v*"], text=True
+          ).splitlines()
+          versions = [tag[1:] for tag in pointed_tags if re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag)]
+          if versions:
+              print(max(versions, key=lambda value: tuple(map(int, value.split(".")))))
+              raise SystemExit
+
+          tags = subprocess.check_output(["git", "tag", "--list", "v*"], text=True).splitlines()
+          versions = [tag[1:] for tag in tags if re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag)]
+          if not versions:
+              raise SystemExit("No semantic release tag exists; start with workflow_dispatch version 0.1.0")
+          major, minor, patch = map(int, max(versions, key=lambda value: tuple(map(int, value.split(".")))).split("."))
+          print(f"{major}.{minor}.{patch + 1}")
+          PY
+          )"
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+          echo "Publishing Vela $version"
+
+      - name: Build, notarize, staple, and verify
+        shell: bash
+        env:
+          VELA_SIGNING_IDENTITY: "Developer ID Application: BasaApp Technologies (7NN5KD3TSU)"
+        run: ./Scripts/release-notarized.sh "${{ steps.version.outputs.value }}" "${{ github.run_number }}"
+
+      - name: Create or update GitHub release
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          tag="v$VERSION"
+          assets=("dist/$VERSION/Vela-$VERSION.dmg" "dist/$VERSION/vela-$VERSION-darwin-arm64.tar.gz" "dist/$VERSION/SHA256SUMS")
+          if existing_sha="$(git rev-list -n 1 "$tag" 2>/dev/null)"; then
+            if [ "$existing_sha" != "$GITHUB_SHA" ]; then
+              echo "$tag already points to a different commit; refusing to replace that release" >&2
+              exit 1
+            fi
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${assets[@]}" --clobber
+          else
+            gh release create "$tag" "${assets[@]}" --target "$GITHUB_SHA" --title "Vela $VERSION" --generate-notes
+          fi
+
+      - name: Remove temporary signing keychain
+        if: always()
+        shell: bash
+        run: security delete-keychain "$RUNNER_TEMP/vela-release.keychain-db" || true
