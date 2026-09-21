@@ -94,10 +94,11 @@ CLI instead:
 vela permissions setup
 ```
 
-The CLI shows the current checklist and advances one permission at a time.
-Vela first asks macOS for access without opening a second window. If macOS no
-longer shows its prompt, choose `o` in the CLI to open the matching System
-Settings page. `vela permissions request all` is an alias for this guided flow.
+The CLI shows an animated checklist, watches macOS for permission changes, and
+advances automatically. It never asks again for access that is already granted.
+If macOS no longer shows a prompt, open the matching page explicitly with
+`vela permissions open <name>`. `vela permissions request all` is an alias for
+the guided flow.
 
 ## Development
 
