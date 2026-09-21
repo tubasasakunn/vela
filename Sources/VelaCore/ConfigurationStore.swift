@@ -44,6 +44,13 @@ public final class ConfigurationStore {
         guard config.snippets.allSatisfy({ !$0.id.isEmpty && !$0.title.isEmpty && !$0.value.isEmpty }) else {
             throw ConfigurationError.invalid("Snippet id, title, and value must not be empty")
         }
+        let contextNames = config.contextSnippets.map(\.name)
+        guard Set(contextNames).count == contextNames.count else {
+            throw ConfigurationError.invalid("Context snippet names must be unique")
+        }
+        guard config.contextSnippets.allSatisfy({ !$0.name.isEmpty && !$0.content.isEmpty && !$0.description.isEmpty }) else {
+            throw ConfigurationError.invalid("Context snippet name, content, and description must not be empty")
+        }
         return config
     }
 }

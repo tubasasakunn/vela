@@ -53,8 +53,8 @@ struct VelaCLI {
         for entry in entries { print("\(entry.id.uuidString)\t\(entry.value.replacingOccurrences(of: "\n", with: " "))") }
     }
     private static func show(_ arguments: ArraySlice<String>) {
-        guard let mode = arguments.first, ["search", "clipboard", "windows"].contains(mode) else {
-            print("Usage: vela show <search|clipboard|windows>")
+        guard let mode = arguments.first, ["search", "clipboard", "windows", "context"].contains(mode) else {
+            print("Usage: vela show <search|clipboard|windows|context>")
             return
         }
         DistributedNotificationCenter.default().postNotificationName(
@@ -248,21 +248,32 @@ struct VelaCLI {
     }
 
     private static func postPermissionRequest(_ permission: VelaPermission) {
+        ensureVelaIsRunning()
         DistributedNotificationCenter.default().postNotificationName(
             VelaNotifications.requestPermission,
             object: nil,
             userInfo: ["permission": permission.cliName],
             deliverImmediately: true
         )
+        PermissionCenter().openPrivacySettings(for: permission)
     }
 
     private static func postOpenSettings(_ permission: VelaPermission) {
+        PermissionCenter().openPrivacySettings(for: permission)
         DistributedNotificationCenter.default().postNotificationName(
             VelaNotifications.openPermissionSettings,
             object: nil,
             userInfo: ["permission": permission.cliName],
             deliverImmediately: true
         )
+    }
+
+    private static func ensureVelaIsRunning() {
+        guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "dev.vela.app") else { return }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = false
+        NSWorkspace.shared.openApplication(at: appURL, configuration: configuration) { _, _ in }
+        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
     }
 
     private static func postPermissionRefresh() {

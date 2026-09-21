@@ -8,6 +8,7 @@ enum JavaScriptConfiguration {
         var launcher: LauncherConfiguration?
         var clipboard: ClipboardConfiguration?
         var switcher: SwitcherConfiguration?
+        var contextSnippets: [ContextSnippetConfiguration]?
     }
     static let defaultSource = """
     // Vela configuration. This file is ordinary JavaScript and belongs in Git.
@@ -15,11 +16,16 @@ enum JavaScriptConfiguration {
       launcher: { applicationSearch: true },
       clipboard: { limit: 200, ignoredBundleIdentifiers: ["com.1password.1password"] },
       switcher: { includeMinimizedWindows: false },
+      // These are selected from the focused field's accessible label and description.
+      contextSnippets: [
+        // { name: "Company address", description: "Billing, shipping, or office-address input fields", content: "〒123-4567\\n東京都…" },
+      ],
     });
 
     Vela.hotkey("option+f", Vela.showLauncher);
     Vela.hotkey("command+shift+space", Vela.showLauncher);
     Vela.hotkey("command+shift+v", Vela.showClipboard);
+    Vela.hotkey("control+option+o", Vela.captureTextFromScreen);
     Vela.hotkey("option+tab", Vela.showSwitcher);
     Vela.hotkey("command+shift+tab", Vela.showSwitcher);
     Vela.hotkey("option+[", () => Vela.window("leftHalf"));
@@ -31,6 +37,7 @@ enum JavaScriptConfiguration {
     Vela.hotkey("control+tab", Vela.showSwitcher);
     Vela.hotkey("option+j", () => Vela.window("nextDisplay"));
     Vela.hotkey("option+k", () => Vela.window("previousDisplay"));
+    // Vela.hotkey("control+option+space", Vela.showContextSnippets);
 
     Vela.command({
       id: "open-workspace",
@@ -67,6 +74,7 @@ enum JavaScriptConfiguration {
                 if let launcher = partial.launcher { configuration.launcher = launcher }
                 if let clipboard = partial.clipboard { configuration.clipboard = clipboard }
                 if let switcher = partial.switcher { configuration.switcher = switcher }
+                if let contextSnippets = partial.contextSnippets { configuration.contextSnippets = contextSnippets }
             } catch { failure = error.localizedDescription }
         }
         let hotkey: @convention(block) (String, JSValue) -> Void = { keys, action in
@@ -106,6 +114,8 @@ enum JavaScriptConfiguration {
         vela.setObject({ ["type": "launcher"] } as @convention(block) () -> NSDictionary, forKeyedSubscript: "showLauncher" as NSString)
         vela.setObject({ ["type": "clipboard"] } as @convention(block) () -> NSDictionary, forKeyedSubscript: "showClipboard" as NSString)
         vela.setObject({ ["type": "switcher"] } as @convention(block) () -> NSDictionary, forKeyedSubscript: "showSwitcher" as NSString)
+        vela.setObject({ ["type": "contextSnippets"] } as @convention(block) () -> NSDictionary, forKeyedSubscript: "showContextSnippets" as NSString)
+        vela.setObject({ ["type": "captureTextFromScreen"] } as @convention(block) () -> NSDictionary, forKeyedSubscript: "captureTextFromScreen" as NSString)
         vela.setObject({ ["type": "quitFrontmostApplication"] } as @convention(block) () -> NSDictionary, forKeyedSubscript: "quitFrontmostApplication" as NSString)
         context.setObject(vela, forKeyedSubscript: "Vela" as NSString)
         _ = context.evaluateScript(source, withSourceURL: url)
@@ -122,6 +132,8 @@ enum JavaScriptConfiguration {
         case "launcher": return .launcher
         case "clipboard": return .clipboard
         case "switcher": return .switcher
+        case "contextSnippets": return .contextSnippets
+        case "captureTextFromScreen": return .captureTextFromScreen
         case "quitFrontmostApplication": return .quitFrontmostApplication
         case "leftHalf", "rightHalf", "toggleMaximize", "minimize", "close", "nextDisplay", "previousDisplay", "focusPrevious": return .window(WindowAction(rawValue: type)!)
         default: return nil

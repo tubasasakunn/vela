@@ -17,6 +17,8 @@ let package = Package(
                 .linkedFramework("ApplicationServices"),
                 .linkedFramework("Carbon"),
                 .linkedFramework("JavaScriptCore"),
+                .linkedFramework("Vision"),
+                .unsafeFlags(["-Xlinker", "-weak_framework", "-Xlinker", "FoundationModels"]),
                 .linkedFramework("UserNotifications"),
             ]
         ),

@@ -47,6 +47,8 @@ Vela.configure({
 Vela.hotkey("command+shift+space", Vela.showLauncher);
 Vela.hotkey("option+f", Vela.showLauncher);
 Vela.hotkey("command+shift+v", Vela.showClipboard);
+// Select a screen area; recognized text is copied to the clipboard.
+Vela.hotkey("control+option+o", Vela.captureTextFromScreen);
 Vela.hotkey("option+tab", Vela.showSwitcher);
 Vela.hotkey("command+option+left", () => Vela.window("leftHalf"));
 
@@ -64,13 +66,32 @@ Vela.snippet({
   value: "Thank you for your message.",
   keywords: ["reply"],
 });
+
+// On macOS 26+ with Apple Intelligence available, Vela uses Apple's on-device
+// Foundation Model to put the most suitable item first for the focused input.
+Vela.configure({
+  contextSnippets: [
+    {
+      name: "Company address",
+      description: "Billing, shipping, or office-address input fields",
+      content: "〒123-4567\n東京都…",
+    },
+  ],
+});
+Vela.hotkey("control+option+space", Vela.showContextSnippets);
 ```
+
+Vela never sends a field's current value to the model. Password and other
+secure text fields are excluded. The palette always requires Enter/click to
+paste; if the model is unavailable, candidates remain available in their
+configured order.
 
 ### API
 
-- `Vela.configure({ launcher, clipboard, switcher })`
+- `Vela.configure({ launcher, clipboard, switcher, contextSnippets })`
 - `Vela.hotkey("command+shift+space", Vela.showLauncher)`
-- `Vela.hotkey(keys, Vela.showClipboard | Vela.showSwitcher | Vela.quitFrontmostApplication)`
+- `Vela.hotkey(keys, Vela.showClipboard | Vela.showSwitcher | Vela.captureTextFromScreen | Vela.quitFrontmostApplication)`
+- `Vela.hotkey(keys, Vela.showContextSnippets)`
 - `Vela.hotkey(keys, () => Vela.window("leftHalf" | "rightHalf" | "toggleMaximize" | "minimize" | "close" | "nextDisplay" | "previousDisplay" | "focusPrevious"))`
 - `Vela.command({ id, title, subtitle?, keywords?, run })`
 - `Vela.snippet({ id, title, value, group?, keywords? })`
@@ -87,6 +108,7 @@ vela doctor
 vela open
 vela show search
 vela show clipboard
+vela show context
 vela run open-workspace
 vela clipboard list
 vela snippets import-clipy

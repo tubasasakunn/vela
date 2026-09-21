@@ -7,7 +7,12 @@ public struct VelaWindow: Identifiable, Equatable {
     public let title: String
     public let applicationName: String
     public let bundleIdentifier: String?
-    fileprivate let element: AXUIElement
+    /// A small, current rendering of the window. It is nil until Screen Recording
+    /// permission has been granted, or when macOS cannot expose a window's pixels.
+    public let preview: NSImage?
+    fileprivate let element: AXUIElement?
+    fileprivate let processIdentifier: pid_t
+    fileprivate let windowID: CGWindowID?
     public static func == (lhs: VelaWindow, rhs: VelaWindow) -> Bool { lhs.id == rhs.id }
 }
 
@@ -34,23 +39,43 @@ public final class WindowController {
         if let activationObserver { NSWorkspace.shared.notificationCenter.removeObserver(activationObserver) }
     }
     public var accessibilityTrusted: Bool { AXIsProcessTrusted() }
+    public var screenRecordingAuthorized: Bool { CGPreflightScreenCaptureAccess() }
+    public func requestScreenRecordingPermission() { _ = CGRequestScreenCaptureAccess() }
     public func requestAccessibilityPermission() { AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary) }
     public func windows(includeMinimized: Bool = false) -> [VelaWindow] {
         let recency = Dictionary(uniqueKeysWithValues: recentBundleIdentifiers.enumerated().map { ($0.element, $0.offset) })
-        return NSWorkspace.shared.runningApplications
+        let applications = NSWorkspace.shared.runningApplications
             .filter { $0.activationPolicy == .regular && !$0.isTerminated }
             .sorted {
                 let lhs = $0.bundleIdentifier.flatMap { recency[$0] } ?? Int.max
                 let rhs = $1.bundleIdentifier.flatMap { recency[$0] } ?? Int.max
                 return lhs < rhs
             }
-            .flatMap { application in windows(for: application, includeMinimized: includeMinimized) }
+        let applicationsByProcess = Dictionary(uniqueKeysWithValues: applications.map { ($0.processIdentifier, $0) })
+        let serverWindows = allWindowServerWindows()
+        let accessibilityWindows = applications.flatMap { application in
+            windows(for: application, includeMinimized: includeMinimized, serverWindows: serverWindows.filter { $0.processIdentifier == application.processIdentifier })
+        }
+        let represented = Set(accessibilityWindows.compactMap(\.windowID))
+        let otherSpaceWindows = serverWindows.compactMap { serverWindow -> VelaWindow? in
+            guard !represented.contains(serverWindow.id),
+                  let application = applicationsByProcess[serverWindow.processIdentifier] else { return nil }
+            return VelaWindow(
+                id: "cg-\(serverWindow.id)",
+                title: serverWindow.title,
+                applicationName: application.localizedName ?? "Application",
+                bundleIdentifier: application.bundleIdentifier,
+                preview: thumbnail(for: serverWindow.id),
+                element: nil,
+                processIdentifier: serverWindow.processIdentifier,
+                windowID: serverWindow.id
+            )
+        }
+        return accessibilityWindows + otherSpaceWindows
     }
     public func focus(_ window: VelaWindow) {
-        AXUIElementPerformAction(window.element, kAXRaiseAction as CFString)
-        if let running = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == window.bundleIdentifier }) {
-            running.activate()
-        }
+        NSRunningApplication(processIdentifier: window.processIdentifier)?.activate()
+        if let element = window.element { AXUIElementPerformAction(element, kAXRaiseAction as CFString) }
     }
     public func moveFocusedWindow(_ action: WindowAction) {
         guard accessibilityTrusted else { return }
@@ -128,7 +153,7 @@ public final class WindowController {
     private func isEffectivelyMaximized(_ frame: CGRect, in visibleFrame: CGRect) -> Bool {
         abs(frame.width - visibleFrame.width) < 4 && abs(frame.height - visibleFrame.height) < 4
     }
-    private func windows(for application: NSRunningApplication, includeMinimized: Bool) -> [VelaWindow] {
+    private func windows(for application: NSRunningApplication, includeMinimized: Bool, serverWindows: [WindowServerWindow]) -> [VelaWindow] {
         let axApp = AXUIElementCreateApplication(application.processIdentifier)
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &value) == .success,
@@ -137,8 +162,58 @@ public final class WindowController {
             let title = stringAttribute(element, kAXTitleAttribute) ?? application.localizedName ?? "Untitled"
             let minimized = boolAttribute(element, kAXMinimizedAttribute)
             guard includeMinimized || !minimized else { return nil }
-            return VelaWindow(id: "\(application.processIdentifier)-\(index)-\(title)", title: title, applicationName: application.localizedName ?? "Application", bundleIdentifier: application.bundleIdentifier, element: element)
+            let windowID = frame(of: element).flatMap { matchingWindow(for: $0, in: serverWindows) }
+            let preview = windowID.flatMap { thumbnail(for: $0) }
+            return VelaWindow(id: "\(application.processIdentifier)-\(index)-\(title)", title: title, applicationName: application.localizedName ?? "Application", bundleIdentifier: application.bundleIdentifier, preview: preview, element: element, processIdentifier: application.processIdentifier, windowID: windowID)
         }
+    }
+
+    private struct WindowServerWindow {
+        let id: CGWindowID
+        let processIdentifier: pid_t
+        let title: String
+        let frame: CGRect
+    }
+
+    private func allWindowServerWindows() -> [WindowServerWindow] {
+        guard let info = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return [] }
+        return info.compactMap { window in
+            guard let processIdentifier = (window[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value,
+                  (window[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
+                  let number = window[kCGWindowNumber as String] as? NSNumber,
+                  let title = window[kCGWindowName as String] as? String,
+                  !title.isEmpty,
+                  let boundsValue = window[kCGWindowBounds as String],
+                  let bounds = boundsValue as? [String: Any],
+                  let frame = CGRect(dictionaryRepresentation: bounds as CFDictionary),
+                  frame.width > 1, frame.height > 1 else { return nil }
+            return WindowServerWindow(id: CGWindowID(number.uint32Value), processIdentifier: processIdentifier, title: title, frame: frame)
+        }
+    }
+
+    private func matchingWindow(for frame: CGRect, in candidates: [WindowServerWindow]) -> CGWindowID? {
+        candidates.min { lhs, rhs in
+            windowDistance(lhs.frame, from: frame) < windowDistance(rhs.frame, from: frame)
+        }?.id
+    }
+
+    private func windowDistance(_ candidate: CGRect, from target: CGRect) -> CGFloat {
+        abs(candidate.minX - target.minX) + abs(candidate.minY - target.minY)
+            + abs(candidate.width - target.width) + abs(candidate.height - target.height)
+    }
+
+    private func thumbnail(for windowID: CGWindowID) -> NSImage? {
+        guard let image = CGWindowListCreateImage(.null, .optionIncludingWindow, windowID, [.boundsIgnoreFraming, .bestResolution]) else { return nil }
+        let source = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+        let target = CGSize(width: 336, height: 210)
+        let thumbnail = NSImage(size: target)
+        thumbnail.lockFocus()
+        NSGraphicsContext.current?.imageInterpolation = .high
+        let scale = min(target.width / source.size.width, target.height / source.size.height)
+        let size = CGSize(width: source.size.width * scale, height: source.size.height * scale)
+        source.draw(in: CGRect(x: (target.width - size.width) / 2, y: (target.height - size.height) / 2, width: size.width, height: size.height))
+        thumbnail.unlockFocus()
+        return thumbnail
     }
     private func stringAttribute(_ element: AXUIElement, _ attribute: String) -> String? {
         var value: CFTypeRef?

@@ -7,6 +7,8 @@ public struct VelaConfiguration: Codable, Equatable {
     public var hotkeys: [HotkeyConfiguration]
     public var commands: [CommandConfiguration]
     public var snippets: [SnippetConfiguration]
+    /// Text candidates Vela can choose from based on the focused input field.
+    public var contextSnippets: [ContextSnippetConfiguration]
 
     public init(
         launcher: LauncherConfiguration = .init(),
@@ -14,7 +16,8 @@ public struct VelaConfiguration: Codable, Equatable {
         switcher: SwitcherConfiguration = .init(),
         hotkeys: [HotkeyConfiguration] = [],
         commands: [CommandConfiguration] = [],
-        snippets: [SnippetConfiguration] = []
+        snippets: [SnippetConfiguration] = [],
+        contextSnippets: [ContextSnippetConfiguration] = []
     ) {
         self.launcher = launcher
         self.clipboard = clipboard
@@ -22,6 +25,7 @@ public struct VelaConfiguration: Codable, Equatable {
         self.hotkeys = hotkeys
         self.commands = commands
         self.snippets = snippets
+        self.contextSnippets = contextSnippets
     }
 
     public static let `default` = VelaConfiguration(
@@ -29,6 +33,7 @@ public struct VelaConfiguration: Codable, Equatable {
             .init(keys: ["option", "f"], action: .launcher),
             .init(keys: ["command", "shift", "space"], action: .launcher),
             .init(keys: ["command", "shift", "v"], action: .clipboard),
+            .init(keys: ["control", "option", "o"], action: .captureTextFromScreen),
             .init(keys: ["option", "tab"], action: .switcher),
             .init(keys: ["command", "shift", "tab"], action: .switcher),
         ]
@@ -65,12 +70,14 @@ public enum VelaAction: Codable, Equatable {
     case launcher
     case clipboard
     case switcher
+    case contextSnippets
+    case captureTextFromScreen
     case command(String)
     case window(WindowAction)
     case quitFrontmostApplication
 
     private enum CodingKeys: String, CodingKey { case type, id, direction }
-    private enum Kind: String, Codable { case launcher, clipboard, switcher, command, window, quitFrontmostApplication }
+    private enum Kind: String, Codable { case launcher, clipboard, switcher, contextSnippets, captureTextFromScreen, command, window, quitFrontmostApplication }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -78,6 +85,8 @@ public enum VelaAction: Codable, Equatable {
         case .launcher: self = .launcher
         case .clipboard: self = .clipboard
         case .switcher: self = .switcher
+        case .contextSnippets: self = .contextSnippets
+        case .captureTextFromScreen: self = .captureTextFromScreen
         case .command: self = .command(try container.decode(String.self, forKey: .id))
         case .window: self = .window(try container.decode(WindowAction.self, forKey: .direction))
         case .quitFrontmostApplication: self = .quitFrontmostApplication
@@ -90,6 +99,8 @@ public enum VelaAction: Codable, Equatable {
         case .launcher: try container.encode(Kind.launcher, forKey: .type)
         case .clipboard: try container.encode(Kind.clipboard, forKey: .type)
         case .switcher: try container.encode(Kind.switcher, forKey: .type)
+        case .contextSnippets: try container.encode(Kind.contextSnippets, forKey: .type)
+        case .captureTextFromScreen: try container.encode(Kind.captureTextFromScreen, forKey: .type)
         case let .command(id): try container.encode(Kind.command, forKey: .type); try container.encode(id, forKey: .id)
         case let .window(direction): try container.encode(Kind.window, forKey: .type); try container.encode(direction, forKey: .direction)
         case .quitFrontmostApplication: try container.encode(Kind.quitFrontmostApplication, forKey: .type)
@@ -124,6 +135,20 @@ public struct SnippetConfiguration: Codable, Equatable, Identifiable {
         self.value = value
         self.group = group
         self.keywords = keywords
+    }
+}
+
+/// A paste candidate whose description tells the on-device model when it is appropriate.
+public struct ContextSnippetConfiguration: Codable, Equatable, Identifiable {
+    public var id: String { name }
+    public var name: String
+    public var content: String
+    public var description: String
+
+    public init(name: String, content: String, description: String) {
+        self.name = name
+        self.content = content
+        self.description = description
     }
 }
 

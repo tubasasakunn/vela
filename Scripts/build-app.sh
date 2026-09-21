@@ -14,5 +14,8 @@ mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources" "$app_dir/Conte
 cp Resources/Info.plist "$app_dir/Contents/Info.plist"
 cp "$build_dir/VelaApp" "$app_dir/Contents/MacOS/Vela"
 cp "$build_dir/vela" "$app_dir/Contents/Helpers/vela"
-codesign --force --sign - "$app_dir"
+# Keep the same designated requirement as the distributed app so macOS privacy
+# grants remain attached to Vela after a local development install.
+signing_identity="${VELA_SIGNING_IDENTITY:-Developer ID Application: BasaApp Technologies (7NN5KD3TSU)}"
+codesign --force --sign "$signing_identity" "$app_dir"
 echo "Built $app_dir"
