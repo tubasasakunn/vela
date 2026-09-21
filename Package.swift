@@ -17,6 +17,7 @@ let package = Package(
                 .linkedFramework("ApplicationServices"),
                 .linkedFramework("Carbon"),
                 .linkedFramework("JavaScriptCore"),
+                .linkedFramework("UserNotifications"),
             ]
         ),
         .executableTarget(name: "VelaApp", dependencies: ["VelaCore"]),

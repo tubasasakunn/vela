@@ -81,10 +81,10 @@ IDs, and clipboard bounds before the running application adopts it.
 
 ## Permissions
 
-Vela runs as a menu-bar app. Grant Accessibility access in System Settings for
-window movement and the window switcher. The launcher, clipboard history, and
-configured Carbon hotkeys work independently of that permission where macOS
-allows them.
+Vela runs as a menu-bar app. On first launch, it presents one clear checklist
+for Accessibility, Input Monitoring, Screen Recording, and Notifications, then
+asks for each permission in a deliberate order. You can reopen the checklist
+from the Vela menu at any time.
 
 ## Development
 
