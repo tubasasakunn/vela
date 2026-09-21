@@ -36,6 +36,11 @@ private final class VelaDelegate: NSObject, NSApplicationDelegate {
             guard let request = notification.userInfo?["permission"] as? String else { return }
             self?.requestPermission(named: request)
         }
+        DistributedNotificationCenter.default().addObserver(forName: VelaNotifications.openPermissionSettings, object: nil, queue: .main) { [weak self] notification in
+            guard let name = notification.userInfo?["permission"] as? String,
+                  let permission = VelaPermission(cliName: name) else { return }
+            self?.permissions.openPrivacySettings(for: permission)
+        }
         watcher = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.reloadWhenChanged() }
         refreshPermissionStatus()
         permissionWatcher = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.refreshPermissionStatus() }
@@ -86,7 +91,6 @@ private final class VelaDelegate: NSObject, NSApplicationDelegate {
 
     private func request(_ permission: VelaPermission) {
         permissions.request(permission)
-        if permission != .notifications { permissions.openPrivacySettings(for: permission) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.refreshPermissionStatus() }
     }
 

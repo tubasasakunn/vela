@@ -77,7 +77,9 @@ vela open
 vela run open-workspace
 vela clipboard list
 vela permissions status
+vela permissions setup
 vela permissions request accessibility
+vela permissions open accessibility
 ```
 
 `vela check` validates the JavaScript API result, hotkey collisions, command
@@ -85,15 +87,17 @@ IDs, and clipboard bounds before the running application adopts it.
 
 ## Permissions
 
-Vela has no permission settings screen. Request access from the CLI instead:
+Vela has no permission settings screen. Configure access with the interactive
+CLI instead:
 
 ```sh
-vela permissions request all
+vela permissions setup
 ```
 
-This requests the next missing permission and opens the matching System
-Settings page. Run it again after granting access to continue. Use
-`vela permissions status` to inspect the current state.
+The CLI shows the current checklist and advances one permission at a time.
+Vela first asks macOS for access without opening a second window. If macOS no
+longer shows its prompt, choose `o` in the CLI to open the matching System
+Settings page. `vela permissions request all` is an alias for this guided flow.
 
 ## Development
 
