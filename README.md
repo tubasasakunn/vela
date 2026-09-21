@@ -10,10 +10,13 @@ Install the Formula:
 
 ```sh
 brew tap tubasasakunn/tap
-brew install vela
+HOMEBREW_NO_SANDBOX=1 brew install vela
 brew services start vela
 vela init
 ```
+
+`HOMEBREW_NO_SANDBOX=1` is required on hosts where SwiftPM cannot use
+macOS's legacy `sandbox-exec` facility.
 
 For development, build it locally:
 
