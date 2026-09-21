@@ -66,7 +66,7 @@ struct VelaCLI {
                 fputs("vela: unknown permission: \(target)\n", stderr); return
             }
             DistributedNotificationCenter.default().postNotificationName(VelaNotifications.requestPermission, object: nil, userInfo: ["permission": target], deliverImmediately: true)
-            print("Asked Vela to show the permission flow for \(target).")
+            print("Asked Vela to request \(target).")
         default:
             print("Usage: vela permissions [status | request [all|accessibility|input-monitoring|screen-recording|notifications]]")
         }

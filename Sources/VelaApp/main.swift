@@ -24,25 +24,27 @@ private final class VelaDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var modifiedDate: Date?
     private var watcher: Timer?
-    private var permissionOnboarding: PermissionOnboardingController?
+    private var permissionWatcher: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
         overlay = OverlayController(clipboard: clipboard, windowController: windows, execute: execute)
-        permissionOnboarding = PermissionOnboardingController(permissions: permissions)
         hotkeys.onAction = { [weak self] action in DispatchQueue.main.async { self?.execute(action) } }
         reloadConfiguration(showError: true)
         DistributedNotificationCenter.default().addObserver(forName: VelaNotifications.reload, object: nil, queue: .main) { [weak self] _ in self?.reloadConfiguration(showError: true) }
         DistributedNotificationCenter.default().addObserver(forName: VelaNotifications.requestPermission, object: nil, queue: .main) { [weak self] notification in
             guard let request = notification.userInfo?["permission"] as? String else { return }
-            if request == "all" { self?.permissionOnboarding?.show() }
-            else if let permission = VelaPermission(cliName: request) { self?.permissionOnboarding?.request(permission) }
+            self?.requestPermission(named: request)
         }
         watcher = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.reloadWhenChanged() }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in self?.permissionOnboarding?.showIfNeeded() }
+        refreshPermissionStatus()
+        permissionWatcher = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.refreshPermissionStatus() }
     }
 
-    func applicationWillTerminate(_ notification: Notification) { clipboard.stop() }
+    func applicationWillTerminate(_ notification: Notification) {
+        clipboard.stop()
+        permissionWatcher?.invalidate()
+    }
 
     private func buildMenu() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -54,7 +56,6 @@ private final class VelaDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(withTitle: "Reload configuration", action: #selector(reloadFromMenu), keyEquivalent: "")
         menu.addItem(withTitle: "Open configuration", action: #selector(openConfiguration), keyEquivalent: "")
-        menu.addItem(withTitle: "Permissions…", action: #selector(showPermissions), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Vela", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.items.forEach { $0.target = self }
@@ -66,7 +67,28 @@ private final class VelaDelegate: NSObject, NSApplicationDelegate {
     @objc private func showSwitcher() { overlay?.show(.switcher, configuration: configuration) }
     @objc private func reloadFromMenu() { reloadConfiguration(showError: true) }
     @objc private func openConfiguration() { NSWorkspace.shared.open(VelaPaths.configDirectory) }
-    @objc private func showPermissions() { permissionOnboarding?.show() }
+
+    private func refreshPermissionStatus() {
+        permissions.refresh { states in PermissionStatusStore.write(states) }
+    }
+
+    private func requestPermission(named name: String) {
+        if let permission = VelaPermission(cliName: name) {
+            request(permission)
+            return
+        }
+        guard name == "all" else { return }
+        permissions.refresh { [weak self] states in
+            guard let permission = VelaPermission.allCases.first(where: { states[$0] != true }) else { return }
+            DispatchQueue.main.async { self?.request(permission) }
+        }
+    }
+
+    private func request(_ permission: VelaPermission) {
+        permissions.request(permission)
+        if permission != .notifications { permissions.openPrivacySettings(for: permission) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.refreshPermissionStatus() }
+    }
 
     private func reloadWhenChanged() {
         let attributes = try? FileManager.default.attributesOfItem(atPath: VelaPaths.configuration.path)
@@ -115,189 +137,6 @@ private enum OverlayMode { case launcher, clipboard, switcher }
 private final class KeyPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
-}
-
-private final class PermissionOnboardingController {
-    private let model: PermissionModel
-    private var refreshTimer: Timer?
-    private lazy var panel: NSPanel = {
-        let panel = KeyPanel(contentRect: .init(x: 0, y: 0, width: 620, height: 568), styleMask: [.titled, .fullSizeContentView, .utilityWindow], backing: .buffered, defer: false)
-        panel.titleVisibility = .hidden
-        panel.titlebarAppearsTransparent = true
-        panel.isMovableByWindowBackground = true
-        panel.level = .floating
-        panel.isReleasedWhenClosed = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.backgroundColor = .clear
-        panel.isOpaque = false
-        panel.contentView = NSHostingView(rootView: PermissionOnboardingView(model: model, dismiss: { [weak self] in self?.hide() }))
-        return panel
-    }()
-
-    init(permissions: PermissionCenter) {
-        model = PermissionModel(permissions: permissions)
-        model.onComplete = { [weak self] in self?.hide() }
-    }
-
-    func showIfNeeded() {
-        model.refresh { [weak self] complete in if !complete { self?.show() } }
-    }
-
-    func show() {
-        model.refresh()
-        panel.center()
-        NSApp.activate(ignoringOtherApps: true)
-        panel.makeKeyAndOrderFront(nil)
-        beginRefreshing()
-    }
-
-    func request(_ permission: VelaPermission) {
-        show()
-        model.request(permission)
-    }
-
-    private func beginRefreshing() {
-        refreshTimer?.invalidate()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
-            guard let self, self.panel.isVisible else { timer.invalidate(); return }
-            self.model.refresh()
-        }
-    }
-
-    private func hide() {
-        refreshTimer?.invalidate()
-        refreshTimer = nil
-        panel.orderOut(nil)
-    }
-}
-
-private struct PermissionState: Identifiable {
-    let permission: VelaPermission
-    let granted: Bool
-    var id: VelaPermission { permission }
-}
-
-private final class PermissionModel: ObservableObject {
-    @Published private(set) var states = VelaPermission.allCases.map { PermissionState(permission: $0, granted: false) }
-    @Published private(set) var isChecking = false
-    var onComplete: (() -> Void)?
-    private let permissions: PermissionCenter
-
-    init(permissions: PermissionCenter) { self.permissions = permissions }
-
-    var grantedCount: Int { states.filter(\.granted).count }
-    var isComplete: Bool { grantedCount == states.count }
-    var nextMissing: PermissionState? { states.first(where: { !$0.granted }) }
-
-    func refresh(completion: ((Bool) -> Void)? = nil) {
-        guard !isChecking else { return }
-        isChecking = true
-        permissions.refresh { [weak self] values in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.states = VelaPermission.allCases.map { PermissionState(permission: $0, granted: values[$0] ?? false) }
-                PermissionStatusStore.write(values)
-                self.isChecking = false
-                completion?(self.isComplete)
-                if self.isComplete { self.onComplete?() }
-            }
-        }
-    }
-
-    func request(_ permission: VelaPermission) {
-        permissions.request(permission)
-        if permission != .notifications { permissions.openPrivacySettings(for: permission) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.refresh() }
-    }
-
-    func openSettings(_ permission: VelaPermission) { permissions.openPrivacySettings(for: permission) }
-}
-
-private struct PermissionOnboardingView: View {
-    @ObservedObject var model: PermissionModel
-    let dismiss: () -> Void
-
-    var body: some View {
-        return VStack(spacing: 0) {
-            VStack(spacing: 10) {
-                ZStack {
-                    Circle().fill(.blue.opacity(0.18)).frame(width: 72, height: 72)
-                    Image(systemName: model.isComplete ? "checkmark" : "sparkle")
-                        .font(.system(size: 29, weight: .medium)).foregroundStyle(.tint)
-                }
-                Text(model.isComplete ? "Vela の準備ができました" : "Vela を準備する")
-                    .font(.system(size: 25, weight: .semibold))
-                Text(model.isComplete ? "すべての操作を使えます。" : "必要なアクセスを許可すると、どのアプリからでもVelaを使えます。")
-                    .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                Text("\(model.grantedCount) / \(model.states.count) 許可済み")
-                    .font(.caption.weight(.medium)).foregroundStyle(.secondary)
-            }
-            .padding(.top, 32).padding(.bottom, 22)
-
-            VStack(spacing: 8) {
-                ForEach(model.states) { state in
-                    PermissionRow(state: state, request: { model.request(state.permission) }, settings: { model.openSettings(state.permission) })
-                }
-            }
-            .padding(.horizontal, 22)
-
-            Spacer(minLength: 14)
-            HStack(spacing: 10) {
-                Button("状態を更新") { model.refresh() }.buttonStyle(.bordered)
-                Spacer()
-                if let next = model.nextMissing {
-                    Button("\(next.permission.title)を許可") { model.request(next.permission) }
-                        .buttonStyle(.borderedProminent).controlSize(.large)
-                } else {
-                    Button("完了") { dismiss() }.buttonStyle(.borderedProminent).controlSize(.large)
-                }
-            }
-            .padding(22)
-        }
-        .frame(width: 620, height: 568)
-        .modifier(VelaGlassSurface(cornerRadius: 26))
-    }
-}
-
-private struct PermissionRow: View {
-    let state: PermissionState
-    let request: () -> Void
-    let settings: () -> Void
-    var body: some View {
-        HStack(spacing: 13) {
-            Image(systemName: state.granted ? "checkmark.circle.fill" : state.permission.symbol)
-                .font(.system(size: 19, weight: .medium))
-                .foregroundStyle(state.granted ? .green : .secondary)
-                .frame(width: 26)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(state.permission.title).font(.body.weight(.medium))
-                Text(state.permission.detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-            }
-            Spacer(minLength: 8)
-            if state.granted {
-                Text("許可済み").font(.caption.weight(.medium)).foregroundStyle(.green)
-            } else {
-                HStack(spacing: 5) {
-                    Button("許可", action: request).buttonStyle(.bordered)
-                    Button(action: settings) { Image(systemName: "gearshape") }
-                        .buttonStyle(.bordered).help("システム設定を開く")
-                }
-            }
-        }
-        .padding(.horizontal, 15).padding(.vertical, 12)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-    }
-}
-
-private struct VelaGlassSurface: ViewModifier {
-    let cornerRadius: CGFloat
-    @ViewBuilder func body(content: Content) -> some View {
-        if #available(macOS 26.0, *) {
-            content.glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
-        } else {
-            content.background(.regularMaterial).clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        }
-    }
 }
 
 private final class OverlayController {

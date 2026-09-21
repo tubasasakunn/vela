@@ -85,10 +85,15 @@ IDs, and clipboard bounds before the running application adopts it.
 
 ## Permissions
 
-Vela runs as a menu-bar app. On first launch, it presents one clear checklist
-for Accessibility, Input Monitoring, Screen Recording, and Notifications, then
-asks for each permission in a deliberate order. You can reopen the checklist
-from the Vela menu at any time.
+Vela has no permission settings screen. Request access from the CLI instead:
+
+```sh
+vela permissions request all
+```
+
+This requests the next missing permission and opens the matching System
+Settings page. Run it again after granting access to continue. Use
+`vela permissions status` to inspect the current state.
 
 ## Development
 
