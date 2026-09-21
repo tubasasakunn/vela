@@ -10,18 +10,18 @@ struct VelaCLI {
         do {
             switch command {
             case "init":
-                try ConfigurationStore().writeDefault()
-                print("Created \(VelaPaths.configuration.path)")
+                try runInitialSetup()
             case "check":
                 _ = try ConfigurationStore().load()
-                print("Configuration is valid.")
+                TerminalUI.success("設定を確認しました")
             case "reload":
                 DistributedNotificationCenter.default().post(name: VelaNotifications.reload, object: nil)
-                print("Asked Vela to reload its configuration.")
+                TerminalUI.success("設定を再読み込みしました")
             case "doctor": doctor()
             case "open":
                 try FileManager.default.createDirectory(at: VelaPaths.configDirectory, withIntermediateDirectories: true)
                 NSWorkspace.shared.open(VelaPaths.configDirectory)
+                TerminalUI.success("設定フォルダを開きました")
             case "show": show(arguments.dropFirst())
             case "run": try run(arguments.dropFirst())
             case "clipboard": clipboard(arguments.dropFirst())
@@ -37,9 +37,11 @@ struct VelaCLI {
 
     private static func doctor() {
         let config = FileManager.default.fileExists(atPath: VelaPaths.configuration.path) ? "found" : "missing"
-        print("Configuration: \(config) (\(VelaPaths.configuration.path))")
-        print("Accessibility: \(AXIsProcessTrusted() ? "allowed" : "not allowed")")
-        print("Clipboard history: \(FileManager.default.fileExists(atPath: VelaPaths.clipboardHistory.path) ? "available" : "waiting for Vela")")
+        TerminalUI.heading("Vela の状態")
+        if config == "found" { TerminalUI.success("設定") } else { TerminalUI.warning("設定が見つかりません") }
+        TerminalUI.detail(VelaPaths.configuration.path)
+        if AXIsProcessTrusted() { TerminalUI.success("アクセシビリティ") } else { TerminalUI.action("vela permissions setup") }
+        if FileManager.default.fileExists(atPath: VelaPaths.clipboardHistory.path) { TerminalUI.success("クリップボード履歴") }
     }
 
     private static func run(_ arguments: ArraySlice<String>) throws {
@@ -57,7 +59,7 @@ struct VelaCLI {
 
     private static func show(_ arguments: ArraySlice<String>) {
         guard let mode = arguments.first, ["search", "clipboard", "windows", "context"].contains(mode) else {
-            print("Usage: vela show <search|clipboard|windows|context>")
+            TerminalUI.action("vela show <search|clipboard|windows|context>")
             return
         }
         DistributedNotificationCenter.default().postNotificationName(
@@ -66,12 +68,14 @@ struct VelaCLI {
             userInfo: ["mode": mode],
             deliverImmediately: true
         )
+        TerminalUI.success("\(mode) を表示しました")
     }
 
     private static func usage() {
+        TerminalUI.heading("vela")
         print("""
-        Usage: vela <command>
-          init              create ~/.config/vela/vela.js
+          Usage: vela <command>
+          init              choose and create vela.js, then set up permissions
           check             validate the configuration
           reload            reload the running Vela app
           doctor            show configuration and permission status

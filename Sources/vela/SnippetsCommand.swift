@@ -10,7 +10,7 @@ extension VelaCLI {
     }
     static func snippets(_ arguments: ArraySlice<String>) throws {
         guard arguments.first == "import-clipy" else {
-            print("Usage: vela snippets import-clipy")
+            TerminalUI.action("vela snippets import-clipy")
             return
         }
         let database = FileManager.default.homeDirectoryForCurrentUser
@@ -51,7 +51,8 @@ extension VelaCLI {
         }
         try source.write(to: configURL, atomically: true, encoding: .utf8)
         DistributedNotificationCenter.default().post(name: VelaNotifications.reload, object: nil)
-        print("Imported \(records.count) Clipy snippets into \(configURL.path)")
+        TerminalUI.success("Clipy のスニペットを \(records.count) 件読み込みました")
+        TerminalUI.detail(configURL.path)
     }
     private static func javascriptString(_ value: String) throws -> String {
         let data = try JSONSerialization.data(withJSONObject: [value])
@@ -59,4 +60,3 @@ extension VelaCLI {
         return String(array.dropFirst().dropLast())
     }
 }
-

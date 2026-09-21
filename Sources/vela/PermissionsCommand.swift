@@ -24,74 +24,55 @@ extension VelaCLI {
 
     private static func printPermissionStatus() {
         guard let snapshot = freshPermissionSnapshot(showProgress: true) else {
-            print("┌  Vela permissions")
-            print("│")
-            print("◇  状態を取得できません")
-            print("│  brew services start vela")
-            print("│  を実行してから、もう一度お試しください。")
-            print("│")
-            print("└  setup paused")
+            TerminalUI.warning("権限の状態を取得できません")
+            TerminalUI.action("Vela を開いてから、もう一度実行してください")
             return
         }
 
-        print("┌  Vela permissions")
-        print("│")
+        TerminalUI.heading("権限")
         for permission in VelaPermission.allCases {
             let granted = snapshot.isGranted(permission)
-            let mark = granted ? "●" : "○"
-            let state = granted ? "許可済み" : "未許可"
-            print("\(mark)  \(permission.title)  \(state)")
-            print("│  \(permission.detail)")
-            print("│")
+            let mark = granted ? TerminalUI.style("✓", code: "32") : TerminalUI.style("○", code: "2")
+            print("\(mark)  \(permission.title)")
         }
 
         if let next = snapshot.nextMissingPermission {
-            print("◇  次: \(next.title)")
-            print("│  vela permissions setup")
-            print("│")
-            print("└  \(snapshot.grantedCount) / \(VelaPermission.allCases.count) granted")
+            TerminalUI.action("次は \(next.title)  ·  vela permissions setup")
         } else {
-            print("◇  すべての権限が許可されています")
-            print("│")
-            print("└  setup complete")
+            TerminalUI.success("準備完了")
         }
     }
 
-    private static func runPermissionSetup() {
+    static func runPermissionSetup() {
         guard var snapshot = freshPermissionSnapshot(showProgress: true) else {
             printPermissionStatus()
             return
         }
 
-        print("┌  Vela permissions setup")
+        TerminalUI.heading("権限を設定")
         printPermissionRows(snapshot)
 
         while let permission = snapshot.nextMissingPermission {
-            print("│")
             animateBriefly("\(permission.title)を要求しています")
             postPermissionRequest(permission)
 
             guard isInteractiveTerminal else {
-                print("◇  \(permission.title)の許可を要求しました")
-                print("└  vela permissions status")
+                TerminalUI.action("\(permission.title)の要求を送信しました")
                 return
             }
 
             guard waitUntilGranted(permission, timeout: 300) else {
                 clearAnimatedLine()
-                print("◇  \(permission.title)を確認できませんでした")
-                print("│  vela permissions open \(permission.cliName)")
-                print("└  vela permissions setup で再開できます")
+                TerminalUI.warning("\(permission.title)を確認できませんでした")
+                TerminalUI.action("vela permissions open \(permission.cliName)")
                 return
             }
             clearAnimatedLine()
-            print("\(green("●"))  \(permission.title)  許可済み")
+            TerminalUI.success(permission.title)
             snapshot = freshPermissionSnapshot(showProgress: false) ?? snapshot
         }
 
-        print("│")
-        print("◇  \(green("すべての権限が許可されました"))")
-        print("└  setup complete  \(VelaPermission.allCases.count) / \(VelaPermission.allCases.count)")
+        TerminalUI.success("セットアップ完了")
     }
 
     private static func requestSinglePermission(_ name: String) {
@@ -102,22 +83,22 @@ extension VelaCLI {
         }
 
         if freshPermissionSnapshot(showProgress: true)?.isGranted(permission) == true {
-            print("\(green("●"))  \(permission.title)  許可済み")
+            TerminalUI.success(permission.title)
             return
         }
 
         animateBriefly("\(permission.title)を要求しています")
         postPermissionRequest(permission)
         guard isInteractiveTerminal else {
-            print("◇  \(permission.title)の許可を要求しました")
+            TerminalUI.action("\(permission.title)の要求を送信しました")
             return
         }
         if waitUntilGranted(permission, timeout: 300) {
             clearAnimatedLine()
-            print("\(green("●"))  \(permission.title)  許可済み")
+            TerminalUI.success(permission.title)
         } else {
             clearAnimatedLine()
-            print("◇  vela permissions open \(permission.cliName)")
+            TerminalUI.action("vela permissions open \(permission.cliName)")
         }
     }
 
@@ -128,7 +109,7 @@ extension VelaCLI {
             return
         }
         PermissionCenter().openPrivacySettings(for: permission)
-        print("◇ \(settingsLocation(for: permission)) を開きました。")
+        TerminalUI.success("\(settingsLocation(for: permission)) を開きました")
     }
 
     private static func postPermissionRequest(_ permission: VelaPermission) {
@@ -159,6 +140,7 @@ extension VelaCLI {
     }
 
     private static func freshPermissionSnapshot(showProgress: Bool) -> PermissionSnapshot? {
+        ensureVelaIsRunning()
         let previousCheck = PermissionStatusStore.read()?.checkedAt ?? .distantPast
         postPermissionRefresh()
         let deadline = Date().addingTimeInterval(3)
@@ -206,39 +188,22 @@ extension VelaCLI {
     }
 
     private static func renderSpinner(frame: Int, text: String) {
-        guard isInteractiveTerminal else { return }
-        let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-        let glyph = cyan(frames[frame % frames.count])
-        print("\r\u{001B}[2K\(glyph)  \(text)", terminator: "")
-        fflush(stdout)
+        TerminalUI.spinner(frame: frame, text: text)
     }
 
     private static func clearAnimatedLine() {
-        guard isInteractiveTerminal else { return }
-        print("\r\u{001B}[2K", terminator: "")
-        fflush(stdout)
+        TerminalUI.clearLine()
     }
 
     private static func printPermissionRows(_ snapshot: PermissionSnapshot) {
-        print("│")
         for permission in VelaPermission.allCases {
-            let granted = snapshot.isGranted(permission)
-            let mark = granted ? green("●") : dim("○")
-            let state = granted ? green("許可済み") : dim("待機")
-            print("\(mark)  \(permission.title)  \(state)")
+            guard !snapshot.isGranted(permission) else { continue }
+            TerminalUI.detail("\(permission.title) — \(permission.detail)")
         }
     }
 
     private static var isInteractiveTerminal: Bool {
-        isatty(STDIN_FILENO) != 0 && isatty(STDOUT_FILENO) != 0
-    }
-
-    private static func green(_ text: String) -> String { color(text, code: "32") }
-    private static func cyan(_ text: String) -> String { color(text, code: "36") }
-    private static func dim(_ text: String) -> String { color(text, code: "2") }
-    private static func color(_ text: String, code: String) -> String {
-        guard isInteractiveTerminal, ProcessInfo.processInfo.environment["NO_COLOR"] == nil else { return text }
-        return "\u{001B}[\(code)m\(text)\u{001B}[0m"
+        TerminalUI.isInteractive
     }
 
     private static func settingsLocation(for permission: VelaPermission) -> String {
@@ -251,7 +216,7 @@ extension VelaCLI {
     }
 
     private static func permissionUsage() {
-        print("Usage:")
+        TerminalUI.heading("permissions")
         print("  vela permissions status")
         print("  vela permissions setup")
         print("  vela permissions request <name|all>")

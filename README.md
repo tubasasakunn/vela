@@ -6,19 +6,22 @@ screen: its behavior lives in one JavaScript file that can be committed to Git.
 
 ## Install
 
-Install the Formula:
+Install the Apple-notarized release directly from the Formula. Homebrew resolves
+the repository-qualified name without a separate `brew tap` step:
 
 ```sh
-brew tap tubasasakunn/tap
-HOMEBREW_NO_SANDBOX=1 brew install vela
-brew services start vela
+brew install tubasasakunn/tap/vela
 vela init
-vela permissions
-vela permissions request all
 ```
 
-`HOMEBREW_NO_SANDBOX=1` is required on hosts where SwiftPM cannot use
-macOS's legacy `sandbox-exec` facility.
+The Formula installs a prebuilt Developer ID-signed and Apple-notarized app, so
+it does not compile Swift during installation. `vela init` lets you choose
+where to create `vela.js`, then guides you through the permissions Vela needs.
+Existing configuration is kept unchanged.
+
+To install the app without Homebrew, download the notarized DMG from the latest
+[GitHub release](https://github.com/tubasasakunn/vela/releases/latest) and drag
+Vela to Applications.
 
 For development, build it locally:
 

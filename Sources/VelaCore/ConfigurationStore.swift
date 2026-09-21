@@ -25,8 +25,10 @@ public final class ConfigurationStore {
         catch { throw ConfigurationError.invalid("Could not read \(url.lastPathComponent): \(error.localizedDescription)") }
     }
     public func writeDefault(overwrite: Bool = false) throws {
-        let url = VelaPaths.configuration
-        try FileManager.default.createDirectory(at: VelaPaths.configDirectory, withIntermediateDirectories: true)
+        try writeDefault(to: VelaPaths.configuration, overwrite: overwrite)
+    }
+    public func writeDefault(to url: URL, overwrite: Bool = false) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         guard overwrite || !FileManager.default.fileExists(atPath: url.path) else { return }
         try JavaScriptConfiguration.defaultSource.write(to: url, atomically: true, encoding: .utf8)
     }

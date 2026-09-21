@@ -6,6 +6,17 @@ final class ConfigurationStoreTests: XCTestCase {
         XCTAssertNoThrow(try ConfigurationStore().validate(.default))
     }
 
+    func testWritesDefaultConfigurationToSelectedDirectory() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "vela-config-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let destination = directory.appending(path: "vela.js")
+        try ConfigurationStore().writeDefault(to: destination)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destination.path))
+        XCTAssertNoThrow(try JavaScriptConfiguration.load(from: destination))
+    }
+
     func testDuplicateHotkeysAreRejected() {
         let configuration = VelaConfiguration(hotkeys: [
             .init(keys: ["command", "space"], action: .launcher),
