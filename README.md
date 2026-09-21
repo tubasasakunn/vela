@@ -39,6 +39,13 @@ against a small, documented Vela API; it is not a custom language. The config
 is evaluated only to describe actions. It has no filesystem, network, or
 environment access while loading.
 
+The selected configuration directory also receives `AGENT.md` and
+`.agent/skills/vela-configuration/`. Together, they tell an AI agent about
+Vela's capabilities, require it to confirm the intended setup with the user,
+and provide the supported settings, constraints, and examples needed to safely
+create or edit `vela.js`. Later `vela init` runs preserve any edits to these
+files.
+
 ```js
 Vela.configure({
   clipboard: {

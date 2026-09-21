@@ -12,6 +12,8 @@ swift build --configuration release --product vela
 rm -rf "$app_dir"
 mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources" "$app_dir/Contents/Helpers"
 cp Resources/Info.plist "$app_dir/Contents/Info.plist"
+cp Resources/AppIcon.icns "$app_dir/Contents/Resources/AppIcon.icns"
+cp Resources/VelaMenuBarIcon.svg "$app_dir/Contents/Resources/VelaMenuBarIcon.svg"
 cp "$build_dir/VelaApp" "$app_dir/Contents/MacOS/Vela"
 cp "$build_dir/vela" "$app_dir/Contents/Helpers/vela"
 if [[ -n "${VELA_VERSION:-}" ]]; then

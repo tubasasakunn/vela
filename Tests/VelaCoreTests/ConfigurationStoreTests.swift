@@ -17,6 +17,28 @@ final class ConfigurationStoreTests: XCTestCase {
         XCTAssertNoThrow(try JavaScriptConfiguration.load(from: destination))
     }
 
+    func testWritesConfigurationSkillWithoutOverwritingUserEdits() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "vela-skill-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        try ConfigurationSkill.write(to: directory)
+        let agent = directory.appending(path: "AGENT.md")
+        let skill = directory.appending(path: ".agent/skills/vela-configuration/SKILL.md")
+        let reference = directory.appending(path: ".agent/skills/vela-configuration/references/vela-js-api.md")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: agent.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: skill.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: reference.path))
+        XCTAssertTrue(try String(contentsOf: agent, encoding: .utf8).contains("vela-configuration"))
+        XCTAssertTrue(try String(contentsOf: skill, encoding: .utf8).contains("Vela Configuration"))
+        XCTAssertTrue(try String(contentsOf: reference, encoding: .utf8).contains("Vela.hotkey"))
+
+        try "user edit".write(to: skill, atomically: true, encoding: .utf8)
+        try "user instructions".write(to: agent, atomically: true, encoding: .utf8)
+        try ConfigurationSkill.write(to: directory)
+        XCTAssertEqual(try String(contentsOf: skill, encoding: .utf8), "user edit")
+        XCTAssertEqual(try String(contentsOf: agent, encoding: .utf8), "user instructions")
+    }
+
     func testDuplicateHotkeysAreRejected() {
         let configuration = VelaConfiguration(hotkeys: [
             .init(keys: ["command", "space"], action: .launcher),

@@ -10,7 +10,7 @@ struct VelaCLI {
         do {
             switch command {
             case "init":
-                try runInitialSetup()
+                try runInitialSetup(arguments.dropFirst())
             case "check":
                 _ = try ConfigurationStore().load()
                 TerminalUI.success("設定を確認しました")
@@ -75,7 +75,8 @@ struct VelaCLI {
         TerminalUI.heading("vela")
         print("""
           Usage: vela <command>
-          init              choose and create vela.js, then set up permissions
+          init [--directory <path>]
+                            create vela.js and AI setup instructions
           check             validate the configuration
           reload            reload the running Vela app
           doctor            show configuration and permission status

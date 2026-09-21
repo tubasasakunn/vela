@@ -4,6 +4,7 @@
 <dict>
   <key>CFBundleDisplayName</key><string>Vela</string>
   <key>CFBundleExecutable</key><string>Vela</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleIdentifier</key><string>dev.vela.app</string>
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
   <key>CFBundleName</key><string>Vela</string>

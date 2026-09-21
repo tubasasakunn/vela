@@ -15,12 +15,24 @@ final class VelaDelegate: NSObject, NSApplicationDelegate {
     private var watcher: Timer?
     private var permissionWatcher: Timer?
     private var contextualPasteTask: Task<Void, Never>?
+    private lazy var onboarding = OnboardingController()
+    private lazy var menuBarIcon: NSImage? = {
+        guard let url = Bundle.main.url(forResource: "VelaMenuBarIcon", withExtension: "svg"),
+              let image = NSImage(contentsOf: url) else { return nil }
+        image.size = NSSize(width: 18, height: 18)
+        image.isTemplate = true
+        return image
+    }()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
         overlay = OverlayController(clipboard: clipboard, windowController: windows)
         hotkeys.onAction = { [weak self] action in DispatchQueue.main.async { self?.execute(action) } }
-        reloadConfiguration(showError: true)
+        if FileManager.default.fileExists(atPath: VelaPaths.configuration.path) {
+            reloadConfiguration(showError: true)
+        } else {
+            DispatchQueue.main.async { [weak self] in self?.onboarding.showWelcome() }
+        }
         DistributedNotificationCenter.default().addObserver(forName: VelaNotifications.reload, object: nil, queue: .main) { [weak self] _ in self?.reloadConfiguration(showError: true) }
         DistributedNotificationCenter.default().addObserver(forName: VelaNotifications.requestPermission, object: nil, queue: .main) { [weak self] notification in
             guard let request = notification.userInfo?["permission"] as? String else { return }
@@ -51,7 +63,7 @@ final class VelaDelegate: NSObject, NSApplicationDelegate {
 
     private func buildMenu() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        statusItem?.button?.image = NSImage(systemSymbolName: "sparkle", accessibilityDescription: "Vela")
+        statusItem?.button?.image = menuBarIcon
         let menu = NSMenu()
         menu.addItem(withTitle: "Show Vela", action: #selector(showLauncher), keyEquivalent: "")
         menu.addItem(withTitle: "Clipboard", action: #selector(showClipboard), keyEquivalent: "")
@@ -59,6 +71,7 @@ final class VelaDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Smart paste", action: #selector(pasteContextSnippet), keyEquivalent: "")
         menu.addItem(withTitle: "Capture text from screenshot", action: #selector(captureTextFromScreen), keyEquivalent: "")
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Set up with AI…", action: #selector(showOnboarding), keyEquivalent: "")
         menu.addItem(withTitle: "Reload configuration", action: #selector(reloadFromMenu), keyEquivalent: "")
         menu.addItem(withTitle: "Open configuration", action: #selector(openConfiguration), keyEquivalent: "")
         menu.addItem(.separator())
@@ -88,6 +101,13 @@ final class VelaDelegate: NSObject, NSApplicationDelegate {
     @objc private func captureTextFromScreen() { execute(.captureTextFromScreen) }
     @objc private func reloadFromMenu() { reloadConfiguration(showError: true) }
     @objc private func openConfiguration() { NSWorkspace.shared.open(VelaPaths.configDirectory) }
+    @objc private func showOnboarding() {
+        if FileManager.default.fileExists(atPath: VelaPaths.configuration.path) {
+            onboarding.showAIChoice()
+        } else {
+            onboarding.showWelcome()
+        }
+    }
 
     private func refreshPermissionStatus() {
         permissions.refresh { states in PermissionStatusStore.write(states) }
@@ -167,7 +187,7 @@ final class VelaDelegate: NSObject, NSApplicationDelegate {
         statusItem?.button?.image = NSImage(systemSymbolName: success ? "checkmark" : "exclamationmark.triangle", accessibilityDescription: "Vela")
         statusItem?.button?.toolTip = message
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-            self?.statusItem?.button?.image = NSImage(systemSymbolName: "sparkle", accessibilityDescription: "Vela")
+            self?.statusItem?.button?.image = self?.menuBarIcon
             self?.statusItem?.button?.toolTip = nil
         }
     }
