@@ -6,23 +6,22 @@ screen: its behavior lives in one JavaScript file that can be committed to Git.
 
 ## Install
 
-Until Vela's first signed release, build it locally:
+Install the Formula:
+
+```sh
+brew tap tubasasakunn/tap
+brew install vela
+brew services start vela
+vela init
+```
+
+For development, build it locally:
 
 ```sh
 git clone git@github.com:tubasasakunn/vela.git
 cd vela
 ./Scripts/install-local.sh
-vela init
 open -a Vela
-```
-
-The release cask is prepared in [`Casks/vela.rb`](Casks/vela.rb). After a
-signed `Vela.zip` is attached to a public release and the cask is copied into
-the Homebrew tap, installation is:
-
-```sh
-brew tap tubasasakunn/tap
-brew install --cask vela
 ```
 
 ## Configuration
