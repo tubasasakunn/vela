@@ -82,6 +82,7 @@ private final class VelaDelegate: NSObject, NSApplicationDelegate {
         case .clipboard: showClipboard()
         case .switcher: showSwitcher()
         case let .window(direction): windows.moveFocusedWindow(direction)
+        case .quitFrontmostApplication: windows.quitFrontmostApplication()
         case let .command(id):
             guard let command = configuration.commands.first(where: { $0.id == id }) else { return }
             do { try CommandExecutor.run(command) } catch { presentError(error) }

@@ -56,8 +56,8 @@ Vela.command({
 
 - `Vela.configure({ launcher, clipboard, switcher })`
 - `Vela.hotkey("command+shift+space", Vela.showLauncher)`
-- `Vela.hotkey(keys, Vela.showClipboard | Vela.showSwitcher)`
-- `Vela.hotkey(keys, () => Vela.window("leftHalf" | "rightHalf" | "maximize" | "focusPrevious"))`
+- `Vela.hotkey(keys, Vela.showClipboard | Vela.showSwitcher | Vela.quitFrontmostApplication)`
+- `Vela.hotkey(keys, () => Vela.window("leftHalf" | "rightHalf" | "toggleMaximize" | "minimize" | "close" | "nextDisplay" | "previousDisplay" | "focusPrevious"))`
 - `Vela.command({ id, title, subtitle?, keywords?, run })`
 - command actions: `Vela.shell(command)`, `Vela.openURL(url)`, and
   `Vela.application(bundleIdentifier)`

@@ -62,9 +62,10 @@ public enum VelaAction: Codable, Equatable {
     case switcher
     case command(String)
     case window(WindowAction)
+    case quitFrontmostApplication
 
     private enum CodingKeys: String, CodingKey { case type, id, direction }
-    private enum Kind: String, Codable { case launcher, clipboard, switcher, command, window }
+    private enum Kind: String, Codable { case launcher, clipboard, switcher, command, window, quitFrontmostApplication }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -74,6 +75,7 @@ public enum VelaAction: Codable, Equatable {
         case .switcher: self = .switcher
         case .command: self = .command(try container.decode(String.self, forKey: .id))
         case .window: self = .window(try container.decode(WindowAction.self, forKey: .direction))
+        case .quitFrontmostApplication: self = .quitFrontmostApplication
         }
     }
 
@@ -85,11 +87,14 @@ public enum VelaAction: Codable, Equatable {
         case .switcher: try container.encode(Kind.switcher, forKey: .type)
         case let .command(id): try container.encode(Kind.command, forKey: .type); try container.encode(id, forKey: .id)
         case let .window(direction): try container.encode(Kind.window, forKey: .type); try container.encode(direction, forKey: .direction)
+        case .quitFrontmostApplication: try container.encode(Kind.quitFrontmostApplication, forKey: .type)
         }
     }
 }
 
-public enum WindowAction: String, Codable, Equatable { case leftHalf, rightHalf, maximize, focusPrevious }
+public enum WindowAction: String, Codable, Equatable {
+    case leftHalf, rightHalf, toggleMaximize, minimize, close, nextDisplay, previousDisplay, focusPrevious
+}
 
 public struct CommandConfiguration: Codable, Equatable, Identifiable {
     public var id: String

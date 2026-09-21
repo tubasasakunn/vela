@@ -20,8 +20,15 @@ enum JavaScriptConfiguration {
     Vela.hotkey("command+shift+space", Vela.showLauncher);
     Vela.hotkey("command+shift+v", Vela.showClipboard);
     Vela.hotkey("command+shift+tab", Vela.showSwitcher);
-    Vela.hotkey("command+option+left", () => Vela.window("leftHalf"));
-    Vela.hotkey("command+option+right", () => Vela.window("rightHalf"));
+    Vela.hotkey("option+[", () => Vela.window("leftHalf"));
+    Vela.hotkey("option+]", () => Vela.window("rightHalf"));
+    Vela.hotkey("option+m", () => Vela.window("toggleMaximize"));
+    Vela.hotkey("option+n", () => Vela.window("minimize"));
+    Vela.hotkey("option+q", () => Vela.window("close"));
+    Vela.hotkey("option+shift+q", Vela.quitFrontmostApplication);
+    Vela.hotkey("control+tab", Vela.showSwitcher);
+    Vela.hotkey("option+j", () => Vela.window("nextDisplay"));
+    Vela.hotkey("option+k", () => Vela.window("previousDisplay"));
 
     Vela.command({
       id: "open-workspace",
@@ -76,6 +83,7 @@ enum JavaScriptConfiguration {
         vela.setObject({ ["type": "launcher"] } as @convention(block) () -> NSDictionary, forKeyedSubscript: "showLauncher" as NSString)
         vela.setObject({ ["type": "clipboard"] } as @convention(block) () -> NSDictionary, forKeyedSubscript: "showClipboard" as NSString)
         vela.setObject({ ["type": "switcher"] } as @convention(block) () -> NSDictionary, forKeyedSubscript: "showSwitcher" as NSString)
+        vela.setObject({ ["type": "quitFrontmostApplication"] } as @convention(block) () -> NSDictionary, forKeyedSubscript: "quitFrontmostApplication" as NSString)
         context.setObject(vela, forKeyedSubscript: "Vela" as NSString)
         _ = context.evaluateScript(source, withSourceURL: url)
         if let failure { throw ConfigurationError.invalid(failure) }
@@ -90,7 +98,8 @@ enum JavaScriptConfiguration {
         case "launcher": return .launcher
         case "clipboard": return .clipboard
         case "switcher": return .switcher
-        case "leftHalf", "rightHalf", "maximize", "focusPrevious": return .window(WindowAction(rawValue: type)!)
+        case "quitFrontmostApplication": return .quitFrontmostApplication
+        case "leftHalf", "rightHalf", "toggleMaximize", "minimize", "close", "nextDisplay", "previousDisplay", "focusPrevious": return .window(WindowAction(rawValue: type)!)
         default: return nil
         }
     }
