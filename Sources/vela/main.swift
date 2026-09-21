@@ -23,6 +23,7 @@ struct VelaCLI {
             case "open":
                 try FileManager.default.createDirectory(at: VelaPaths.configDirectory, withIntermediateDirectories: true)
                 NSWorkspace.shared.open(VelaPaths.configDirectory)
+            case "show": show(arguments.dropFirst())
             case "run": try run(arguments.dropFirst())
             case "clipboard": clipboard(arguments.dropFirst())
             case "permissions": permissions(arguments.dropFirst())
@@ -49,6 +50,18 @@ struct VelaCLI {
         guard arguments.first == "list" else { usage(); return }
         guard let data = try? Data(contentsOf: VelaPaths.clipboardHistory), let entries = try? JSONDecoder().decode([ClipboardEntry].self, from: data) else { return }
         for entry in entries { print("\(entry.id.uuidString)\t\(entry.value.replacingOccurrences(of: "\n", with: " "))") }
+    }
+    private static func show(_ arguments: ArraySlice<String>) {
+        guard let mode = arguments.first, ["search", "clipboard", "windows"].contains(mode) else {
+            print("Usage: vela show <search|clipboard|windows>")
+            return
+        }
+        DistributedNotificationCenter.default().postNotificationName(
+            VelaNotifications.showOverlay,
+            object: nil,
+            userInfo: ["mode": mode],
+            deliverImmediately: true
+        )
     }
     private static func permissions(_ arguments: ArraySlice<String>) {
         let action = arguments.first ?? "status"
@@ -318,6 +331,7 @@ struct VelaCLI {
           reload            reload the running Vela app
           doctor            show configuration and permission status
           open              open the configuration directory
+          show <mode>       show search, clipboard, or windows
           run <id>          run a configured command
           clipboard list    print clipboard history
           permissions       show permission status

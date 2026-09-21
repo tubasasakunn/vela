@@ -23,6 +23,7 @@ public struct VelaConfiguration: Codable, Equatable {
 
     public static let `default` = VelaConfiguration(
         hotkeys: [
+            .init(keys: ["option", "f"], action: .launcher),
             .init(keys: ["command", "shift", "space"], action: .launcher),
             .init(keys: ["command", "shift", "v"], action: .clipboard),
             .init(keys: ["command", "shift", "tab"], action: .switcher),

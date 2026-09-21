@@ -25,4 +25,5 @@ public enum VelaNotifications {
     public static let requestPermission = Notification.Name("dev.vela.request-permission")
     public static let openPermissionSettings = Notification.Name("dev.vela.open-permission-settings")
     public static let refreshPermissions = Notification.Name("dev.vela.refresh-permissions")
+    public static let showOverlay = Notification.Name("dev.vela.show-overlay")
 }

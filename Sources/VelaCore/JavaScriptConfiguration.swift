@@ -17,6 +17,7 @@ enum JavaScriptConfiguration {
       switcher: { includeMinimizedWindows: false },
     });
 
+    Vela.hotkey("option+f", Vela.showLauncher);
     Vela.hotkey("command+shift+space", Vela.showLauncher);
     Vela.hotkey("command+shift+v", Vela.showClipboard);
     Vela.hotkey("command+shift+tab", Vela.showSwitcher);

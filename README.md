@@ -45,6 +45,7 @@ Vela.configure({
 });
 
 Vela.hotkey("command+shift+space", Vela.showLauncher);
+Vela.hotkey("option+f", Vela.showLauncher);
 Vela.hotkey("command+shift+v", Vela.showClipboard);
 Vela.hotkey("command+option+left", () => Vela.window("leftHalf"));
 
@@ -74,6 +75,8 @@ vela check
 vela reload
 vela doctor
 vela open
+vela show search
+vela show clipboard
 vela run open-workspace
 vela clipboard list
 vela permissions status

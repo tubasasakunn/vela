@@ -1,4 +1,5 @@
 import AppKit
+import CoreGraphics
 import SwiftUI
 import VelaCore
 
@@ -43,6 +44,15 @@ private final class VelaDelegate: NSObject, NSApplicationDelegate {
         }
         DistributedNotificationCenter.default().addObserver(forName: VelaNotifications.refreshPermissions, object: nil, queue: .main) { [weak self] _ in
             self?.refreshPermissionStatus()
+        }
+        DistributedNotificationCenter.default().addObserver(forName: VelaNotifications.showOverlay, object: nil, queue: .main) { [weak self] notification in
+            guard let mode = notification.userInfo?["mode"] as? String else { return }
+            switch mode {
+            case "search": self?.showLauncher()
+            case "clipboard": self?.showClipboard()
+            case "windows": self?.showSwitcher()
+            default: break
+            }
         }
         watcher = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.reloadWhenChanged() }
         refreshPermissionStatus()
@@ -151,6 +161,7 @@ private final class OverlayController {
     private let windowController: WindowController
     private let executeAction: (VelaAction) -> Void
     private let model = PaletteModel()
+    private var previousApplication: NSRunningApplication?
     private lazy var panel: NSPanel = {
         let panel = KeyPanel(contentRect: .init(x: 0, y: 0, width: 680, height: 448), styleMask: [.titled, .fullSizeContentView, .utilityWindow], backing: .buffered, defer: false)
         panel.titleVisibility = .hidden
@@ -170,6 +181,7 @@ private final class OverlayController {
     }
 
     func show(_ mode: OverlayMode, configuration: VelaConfiguration) {
+        previousApplication = NSWorkspace.shared.frontmostApplication
         switch mode {
         case .launcher: model.configureLauncher(configuration: configuration)
         case .clipboard: model.configureClipboard(entries: clipboard.entries)
@@ -185,9 +197,25 @@ private final class OverlayController {
         switch item.kind {
         case let .command(command): _ = try? CommandExecutor.run(command)
         case let .application(url): NSWorkspace.shared.openApplication(at: url, configuration: .init())
-        case let .clipboard(entry): clipboard.copy(entry)
+        case let .clipboard(entry): paste(entry)
         case let .window(window): windowController.focus(window)
         case let .action(action): executeAction(action)
+        }
+    }
+
+    private func paste(_ entry: ClipboardEntry) {
+        clipboard.copy(entry)
+        guard let application = previousApplication, application != NSRunningApplication.current else { return }
+        application.activate()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            let keyCode = CGKeyCode(9) // V
+            let source = CGEventSource(stateID: .hidSystemState)
+            let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
+            let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
+            keyDown?.flags = .maskCommand
+            keyUp?.flags = .maskCommand
+            keyDown?.post(tap: .cghidEventTap)
+            keyUp?.post(tap: .cghidEventTap)
         }
     }
 }
@@ -198,30 +226,79 @@ private final class PaletteModel: ObservableObject {
     @Published private(set) var placeholder = "Search commands and applications"
     @Published private(set) var items: [PaletteItem] = []
     @Published private(set) var notice: String?
+    @Published var selectedID: UUID?
     func configureLauncher(configuration: VelaConfiguration) {
         title = "Vela"; placeholder = "Search commands and applications"; notice = nil; query = ""
         var next = configuration.commands.map { PaletteItem(command: $0) }
         if configuration.launcher.applicationSearch {
-            next += NSWorkspace.shared.runningApplications.compactMap { app in
-                guard let url = app.bundleURL, let name = app.localizedName else { return nil }
-                return PaletteItem(application: name, url: url, detail: app.bundleIdentifier)
-            }
+            next += installedApplications()
         }
         items = next
+        selectedID = filteredItems.first?.id
     }
     func configureClipboard(entries: [ClipboardEntry]) {
         title = "Clipboard"; placeholder = "Search clipboard history"; notice = nil; query = ""
         items = entries.map(PaletteItem.init(clipboard:))
+        selectedID = filteredItems.first?.id
     }
     func configureSwitcher(windows: [VelaWindow], accessibilityTrusted: Bool) {
         title = "Windows"; placeholder = "Search open windows"; query = ""
         notice = accessibilityTrusted ? nil : "Allow Accessibility access in System Settings to list and focus windows."
         items = windows.map(PaletteItem.init(window:))
+        selectedID = filteredItems.first?.id
     }
     var filteredItems: [PaletteItem] {
         let term = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !term.isEmpty else { return items }
         return items.filter { $0.searchText.lowercased().localizedCaseInsensitiveContains(term) }
+    }
+
+    var selectedItem: PaletteItem? {
+        filteredItems.first(where: { $0.id == selectedID }) ?? filteredItems.first
+    }
+
+    func selectFirstVisible() { selectedID = filteredItems.first?.id }
+
+    func moveSelection(_ direction: MoveCommandDirection) {
+        let visible = filteredItems
+        guard !visible.isEmpty else { selectedID = nil; return }
+        let current = visible.firstIndex(where: { $0.id == selectedID }) ?? 0
+        switch direction {
+        case .down: selectedID = visible[min(current + 1, visible.count - 1)].id
+        case .up: selectedID = visible[max(current - 1, 0)].id
+        default: break
+        }
+    }
+
+    private func installedApplications() -> [PaletteItem] {
+        let fileManager = FileManager.default
+        let roots = [
+            URL(fileURLWithPath: "/Applications", isDirectory: true),
+            URL(fileURLWithPath: "/System/Applications", isDirectory: true),
+            fileManager.homeDirectoryForCurrentUser.appending(path: "Applications", directoryHint: .isDirectory),
+        ]
+        var applications: [String: PaletteItem] = [:]
+        for root in roots where fileManager.fileExists(atPath: root.path) {
+            guard let enumerator = fileManager.enumerator(
+                at: root,
+                includingPropertiesForKeys: [.isApplicationKey],
+                options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            ) else { continue }
+            for case let url as URL in enumerator where url.pathExtension.lowercased() == "app" {
+                enumerator.skipDescendants()
+                let bundle = Bundle(url: url)
+                let name = (bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
+                    ?? (bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String)
+                    ?? url.deletingPathExtension().lastPathComponent
+                let identifier = bundle?.bundleIdentifier
+                applications[url.standardizedFileURL.path] = PaletteItem(application: name, url: url, detail: identifier)
+            }
+        }
+        for application in NSWorkspace.shared.runningApplications {
+            guard let url = application.bundleURL, let name = application.localizedName else { continue }
+            applications[url.standardizedFileURL.path] = PaletteItem(application: name, url: url, detail: application.bundleIdentifier)
+        }
+        return applications.values.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
 }
 
@@ -231,7 +308,16 @@ private struct PaletteItem: Identifiable {
     var searchText: String { title + " " + (subtitle ?? "") }
     init(command: CommandConfiguration) { title = command.title; subtitle = command.subtitle; symbol = "terminal"; kind = .command(command) }
     init(application: String, url: URL, detail: String?) { title = application; subtitle = detail; symbol = "app"; kind = .application(url) }
-    init(clipboard: ClipboardEntry) { title = clipboard.value.replacingOccurrences(of: "\n", with: " "); subtitle = clipboard.sourceBundleIdentifier; symbol = "doc.on.clipboard"; kind = .clipboard(clipboard) }
+    init(clipboard: ClipboardEntry) {
+        title = clipboard.value.replacingOccurrences(of: "\n", with: " ")
+        let sourceName = clipboard.sourceBundleIdentifier
+            .flatMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }
+            .flatMap { Bundle(url: $0)?.object(forInfoDictionaryKey: "CFBundleName") as? String }
+        let relative = RelativeDateTimeFormatter().localizedString(for: clipboard.createdAt, relativeTo: .now)
+        subtitle = [sourceName, relative].compactMap { $0 }.joined(separator: " · ")
+        symbol = "doc.on.clipboard"
+        kind = .clipboard(clipboard)
+    }
     init(window: VelaWindow) { title = window.title; subtitle = window.applicationName; symbol = "macwindow"; kind = .window(window) }
 }
 
@@ -243,13 +329,19 @@ private struct PaletteView: View {
     var body: some View {
         surface
             .onAppear { searchFocused = true }
+            .onChange(of: model.query) { _, _ in model.selectFirstVisible() }
+            .onMoveCommand { model.moveSelection($0) }
             .onExitCommand(perform: close)
     }
     @ViewBuilder private var surface: some View {
         let content = VStack(spacing: 0) {
             HStack(spacing: 12) {
                 Image(systemName: "sparkle").font(.system(size: 17, weight: .medium)).foregroundStyle(.tint)
-                TextField(model.placeholder, text: $model.query).textFieldStyle(.plain).font(.system(size: 20, weight: .regular)).focused($searchFocused)
+                TextField(model.placeholder, text: $model.query)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 20, weight: .regular))
+                    .focused($searchFocused)
+                    .onSubmit { if let item = model.selectedItem { select(item) } }
                 Text(model.title).font(.caption).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 20).frame(height: 64)
@@ -271,18 +363,34 @@ private struct PaletteView: View {
         } else if model.filteredItems.isEmpty {
             ContentUnavailableView("Nothing found", systemImage: "magnifyingglass", description: Text("Try a different search."))
         } else {
-            List(model.filteredItems) { item in
-                Button { select(item) } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: item.symbol).frame(width: 20).foregroundStyle(.secondary)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(item.title).lineLimit(1)
-                            if let subtitle = item.subtitle { Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        ForEach(model.filteredItems) { item in
+                            Button { select(item) } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: item.symbol).frame(width: 20).foregroundStyle(.secondary)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(item.title).lineLimit(1)
+                                        if let subtitle = item.subtitle { Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                                    }
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 12)
+                                .frame(height: 50)
+                                .contentShape(Rectangle())
+                                .background(model.selectedID == item.id ? Color.accentColor.opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                            .id(item.id)
                         }
-                        Spacer()
-                    }.contentShape(Rectangle())
-                }.buttonStyle(.plain).padding(.vertical, 4)
-            }.listStyle(.plain).scrollContentBackground(.hidden)
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 8)
+                }
+                .onChange(of: model.selectedID) { _, id in
+                    if let id { withAnimation(.snappy(duration: 0.16)) { proxy.scrollTo(id, anchor: .center) } }
+                }
+            }
         }
     }
 }
