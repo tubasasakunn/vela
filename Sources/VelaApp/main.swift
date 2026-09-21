@@ -33,6 +33,11 @@ private final class VelaDelegate: NSObject, NSApplicationDelegate {
         hotkeys.onAction = { [weak self] action in DispatchQueue.main.async { self?.execute(action) } }
         reloadConfiguration(showError: true)
         DistributedNotificationCenter.default().addObserver(forName: VelaNotifications.reload, object: nil, queue: .main) { [weak self] _ in self?.reloadConfiguration(showError: true) }
+        DistributedNotificationCenter.default().addObserver(forName: VelaNotifications.requestPermission, object: nil, queue: .main) { [weak self] notification in
+            guard let request = notification.userInfo?["permission"] as? String else { return }
+            if request == "all" { self?.permissionOnboarding?.show() }
+            else if let permission = VelaPermission(cliName: request) { self?.permissionOnboarding?.request(permission) }
+        }
         watcher = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.reloadWhenChanged() }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in self?.permissionOnboarding?.showIfNeeded() }
     }
@@ -114,6 +119,7 @@ private final class KeyPanel: NSPanel {
 
 private final class PermissionOnboardingController {
     private let model: PermissionModel
+    private var refreshTimer: Timer?
     private lazy var panel: NSPanel = {
         let panel = KeyPanel(contentRect: .init(x: 0, y: 0, width: 620, height: 568), styleMask: [.titled, .fullSizeContentView, .utilityWindow], backing: .buffered, defer: false)
         panel.titleVisibility = .hidden
@@ -124,13 +130,13 @@ private final class PermissionOnboardingController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.backgroundColor = .clear
         panel.isOpaque = false
-        panel.contentView = NSHostingView(rootView: PermissionOnboardingView(model: model, dismiss: { [weak panel] in panel?.orderOut(nil) }))
+        panel.contentView = NSHostingView(rootView: PermissionOnboardingView(model: model, dismiss: { [weak self] in self?.hide() }))
         return panel
     }()
 
     init(permissions: PermissionCenter) {
         model = PermissionModel(permissions: permissions)
-        model.onComplete = { [weak self] in self?.panel.orderOut(nil) }
+        model.onComplete = { [weak self] in self?.hide() }
     }
 
     func showIfNeeded() {
@@ -142,6 +148,26 @@ private final class PermissionOnboardingController {
         panel.center()
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
+        beginRefreshing()
+    }
+
+    func request(_ permission: VelaPermission) {
+        show()
+        model.request(permission)
+    }
+
+    private func beginRefreshing() {
+        refreshTimer?.invalidate()
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
+            guard let self, self.panel.isVisible else { timer.invalidate(); return }
+            self.model.refresh()
+        }
+    }
+
+    private func hide() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+        panel.orderOut(nil)
     }
 }
 
@@ -164,11 +190,13 @@ private final class PermissionModel: ObservableObject {
     var nextMissing: PermissionState? { states.first(where: { !$0.granted }) }
 
     func refresh(completion: ((Bool) -> Void)? = nil) {
+        guard !isChecking else { return }
         isChecking = true
         permissions.refresh { [weak self] values in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.states = VelaPermission.allCases.map { PermissionState(permission: $0, granted: values[$0] ?? false) }
+                PermissionStatusStore.write(values)
                 self.isChecking = false
                 completion?(self.isComplete)
                 if self.isComplete { self.onComplete?() }
@@ -178,6 +206,7 @@ private final class PermissionModel: ObservableObject {
 
     func request(_ permission: VelaPermission) {
         permissions.request(permission)
+        if permission != .notifications { permissions.openPrivacySettings(for: permission) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.refresh() }
     }
 
@@ -248,12 +277,11 @@ private struct PermissionRow: View {
             if state.granted {
                 Text("許可済み").font(.caption.weight(.medium)).foregroundStyle(.green)
             } else {
-                Menu {
-                    Button("許可する", action: request)
-                    Button("システム設定を開く", action: settings)
-                } label: {
-                    Text("許可").frame(minWidth: 44)
-                }.menuStyle(.borderlessButton)
+                HStack(spacing: 5) {
+                    Button("許可", action: request).buttonStyle(.bordered)
+                    Button(action: settings) { Image(systemName: "gearshape") }
+                        .buttonStyle(.bordered).help("システム設定を開く")
+                }
             }
         }
         .padding(.horizontal, 15).padding(.vertical, 12)

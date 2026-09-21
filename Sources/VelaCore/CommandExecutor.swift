@@ -22,4 +22,5 @@ public enum CommandExecutor {
 
 public enum VelaNotifications {
     public static let reload = Notification.Name("dev.vela.reload")
+    public static let requestPermission = Notification.Name("dev.vela.request-permission")
 }

@@ -24,6 +24,7 @@ struct VelaCLI {
                 NSWorkspace.shared.open(VelaPaths.configDirectory)
             case "run": try run(arguments.dropFirst())
             case "clipboard": clipboard(arguments.dropFirst())
+            case "permissions": permissions(arguments.dropFirst())
             default: usage()
             }
         } catch {
@@ -48,6 +49,28 @@ struct VelaCLI {
         guard let data = try? Data(contentsOf: VelaPaths.clipboardHistory), let entries = try? JSONDecoder().decode([ClipboardEntry].self, from: data) else { return }
         for entry in entries { print("\(entry.id.uuidString)\t\(entry.value.replacingOccurrences(of: "\n", with: " "))") }
     }
+    private static func permissions(_ arguments: ArraySlice<String>) {
+        let action = arguments.first ?? "status"
+        switch action {
+        case "status":
+            guard let snapshot = PermissionStatusStore.read() else {
+                print("Permission state is unavailable. Start Vela with: brew services start vela")
+                return
+            }
+            for permission in VelaPermission.allCases {
+                print("\(permission.cliName): \(snapshot.states[permission.cliName] == true ? "granted" : "required")")
+            }
+        case "request":
+            let target = arguments.dropFirst().first ?? "all"
+            guard target == "all" || VelaPermission(cliName: target) != nil else {
+                fputs("vela: unknown permission: \(target)\n", stderr); return
+            }
+            DistributedNotificationCenter.default().postNotificationName(VelaNotifications.requestPermission, object: nil, userInfo: ["permission": target], deliverImmediately: true)
+            print("Asked Vela to show the permission flow for \(target).")
+        default:
+            print("Usage: vela permissions [status | request [all|accessibility|input-monitoring|screen-recording|notifications]]")
+        }
+    }
     private static func usage() {
         print("""
         Usage: vela <command>
@@ -58,6 +81,8 @@ struct VelaCLI {
           open              open the configuration directory
           run <id>          run a configured command
           clipboard list    print clipboard history
+          permissions       print permission status
+          permissions request [name|all]
         """)
     }
 }

@@ -13,6 +13,8 @@ brew tap tubasasakunn/tap
 HOMEBREW_NO_SANDBOX=1 brew install vela
 brew services start vela
 vela init
+vela permissions
+vela permissions request all
 ```
 
 `HOMEBREW_NO_SANDBOX=1` is required on hosts where SwiftPM cannot use
@@ -74,6 +76,8 @@ vela doctor
 vela open
 vela run open-workspace
 vela clipboard list
+vela permissions status
+vela permissions request accessibility
 ```
 
 `vela check` validates the JavaScript API result, hotkey collisions, command

@@ -11,6 +11,18 @@ public enum VelaPermission: CaseIterable, Hashable, Identifiable {
     case notifications
 
     public var id: Self { self }
+    public var cliName: String {
+        switch self {
+        case .accessibility: return "accessibility"
+        case .inputMonitoring: return "input-monitoring"
+        case .screenRecording: return "screen-recording"
+        case .notifications: return "notifications"
+        }
+    }
+    public init?(cliName: String) {
+        guard let permission = VelaPermission.allCases.first(where: { $0.cliName == cliName }) else { return nil }
+        self = permission
+    }
     public var title: String {
         switch self {
         case .accessibility: return "アクセシビリティ"
