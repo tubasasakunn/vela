@@ -26,6 +26,8 @@ final class AISetupGuideTests: XCTestCase {
 
     func testPromptRequiresTheLocalAgentInstructions() {
         let prompt = AISetupGuide.prompt(helperPath: "/Applications/Vela.app/Contents/Helpers/vela")
+        XCTAssertEqual(AISetupGuide.url.absoluteString, "https://vela.basaapp.com/setup.md")
+        XCTAssertTrue(prompt.contains("https://vela.basaapp.com/setup.md"))
         XCTAssertTrue(prompt.contains("AGENT.md"))
         XCTAssertTrue(prompt.contains("vela-configuration/SKILL.md"))
         XCTAssertTrue(prompt.contains("init --directory"))

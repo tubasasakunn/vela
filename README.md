@@ -46,6 +46,10 @@ and provide the supported settings, constraints, and examples needed to safely
 create or edit `vela.js`. Later `vela init` runs preserve any edits to these
 files.
 
+For an LLM-readable installation and configuration sequence, use
+[vela.basaapp.com/setup.md](https://vela.basaapp.com/setup.md). The concise
+LLM index is available at [vela.basaapp.com/llm.txt](https://vela.basaapp.com/llm.txt).
+
 ```js
 Vela.configure({
   clipboard: {

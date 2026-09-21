@@ -15,7 +15,7 @@ public enum AISetupTarget: CaseIterable {
 }
 
 public enum AISetupGuide {
-    public static let url = URL(string: "https://vela.basaapp.com/setup")!
+    public static let url = URL(string: "https://vela.basaapp.com/setup.md")!
 
     public static func prompt(helperPath: String, configurationDirectory: URL? = nil) -> String {
         let setupLocation = configurationDirectory?.path ?? "まだ作成されていません"
