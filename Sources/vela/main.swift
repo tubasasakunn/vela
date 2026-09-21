@@ -53,23 +53,86 @@ struct VelaCLI {
         let action = arguments.first ?? "status"
         switch action {
         case "status":
-            guard let snapshot = PermissionStatusStore.read() else {
-                print("Permission state is unavailable. Start Vela with: brew services start vela")
-                return
-            }
-            for permission in VelaPermission.allCases {
-                print("\(permission.cliName): \(snapshot.states[permission.cliName] == true ? "granted" : "required")")
-            }
+            printPermissionStatus()
         case "request":
-            let target = arguments.dropFirst().first ?? "all"
-            guard target == "all" || VelaPermission(cliName: target) != nil else {
-                fputs("vela: unknown permission: \(target)\n", stderr); return
-            }
-            DistributedNotificationCenter.default().postNotificationName(VelaNotifications.requestPermission, object: nil, userInfo: ["permission": target], deliverImmediately: true)
-            print("Asked Vela to request \(target).")
+            requestPermission(arguments.dropFirst().first ?? "all")
         default:
             print("Usage: vela permissions [status | request [all|accessibility|input-monitoring|screen-recording|notifications]]")
         }
+    }
+
+    private static func printPermissionStatus() {
+        guard let snapshot = PermissionStatusStore.read() else {
+            print("Vela の権限状態をまだ確認できません。")
+            print("常駐アプリを起動してください: brew services start vela")
+            return
+        }
+
+        print("Vela の権限")
+        for permission in VelaPermission.allCases {
+            let granted = snapshot.states[permission.cliName] == true
+            let mark = granted ? "✓" : "○"
+            let state = granted ? "許可済み" : "未許可"
+            print("  \(mark) \(permission.title) — \(state)")
+            print("    \(permission.detail)")
+        }
+
+        if let next = nextMissingPermission(in: snapshot) {
+            print("\n次に行うこと:")
+            print("  vela permissions request \(next.cliName)")
+        } else {
+            print("\nすべての権限が許可されています。")
+        }
+    }
+
+    private static func requestPermission(_ requestedName: String) {
+        guard let snapshot = PermissionStatusStore.read() else {
+            print("Vela が起動していません。先に実行してください:")
+            print("  brew services start vela")
+            return
+        }
+
+        let permission: VelaPermission?
+        if requestedName == "all" {
+            permission = nextMissingPermission(in: snapshot)
+        } else {
+            permission = VelaPermission(cliName: requestedName)
+        }
+
+        guard let permission else {
+            if requestedName == "all" {
+                print("すべての権限が許可されています。")
+            } else {
+                fputs("vela: unknown permission: \(requestedName)\n", stderr)
+            }
+            return
+        }
+
+        if snapshot.states[permission.cliName] == true {
+            print("\(permission.title) はすでに許可済みです。")
+            print("次の権限を進めるには: vela permissions request all")
+            return
+        }
+
+        DistributedNotificationCenter.default().postNotificationName(
+            VelaNotifications.requestPermission,
+            object: nil,
+            userInfo: ["permission": permission.cliName],
+            deliverImmediately: true
+        )
+        print("\(permission.title) の許可を要求しました。")
+        if permission == .notifications {
+            print("macOS の通知ダイアログで「許可」を選んでください。")
+        } else {
+            print("システム設定の該当ページを開きました。Vela を有効にしてください。")
+        }
+        print("\n許可した後に実行:")
+        print("  vela permissions status")
+        print("  vela permissions request all")
+    }
+
+    private static func nextMissingPermission(in snapshot: PermissionSnapshot) -> VelaPermission? {
+        VelaPermission.allCases.first { snapshot.states[$0.cliName] != true }
     }
     private static func usage() {
         print("""
