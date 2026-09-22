@@ -51,10 +51,20 @@ final class OverlayController {
             if !windowController.accessibilityTrusted { windowController.requestAccessibilityPermission() }
             if !windowController.screenRecordingAuthorized { windowController.requestScreenRecordingPermission() }
             model.configureSwitcher(
-                windows: windowController.windows(includeMinimized: configuration.switcher.includeMinimizedWindows),
+                windows: [],
                 accessibilityTrusted: windowController.accessibilityTrusted,
                 screenRecordingAuthorized: windowController.screenRecordingAuthorized
             )
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let windows = await self.windowController.windows(includeMinimized: configuration.switcher.includeMinimizedWindows)
+                guard self.activeMode == .switcher, self.panel.isVisible else { return }
+                self.model.configureSwitcher(
+                    windows: windows,
+                    accessibilityTrusted: self.windowController.accessibilityTrusted,
+                    screenRecordingAuthorized: self.windowController.screenRecordingAuthorized
+                )
+            }
         }
         panel.center()
         NSApp.activate(ignoringOtherApps: true)

@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Foundation
+import ScreenCaptureKit
 
 public struct VelaWindow: Identifiable, Equatable {
     public let id: String
@@ -42,7 +43,7 @@ public final class WindowController {
     public var screenRecordingAuthorized: Bool { CGPreflightScreenCaptureAccess() }
     public func requestScreenRecordingPermission() { _ = CGRequestScreenCaptureAccess() }
     public func requestAccessibilityPermission() { AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary) }
-    public func windows(includeMinimized: Bool = false) -> [VelaWindow] {
+    public func windows(includeMinimized: Bool = false) async -> [VelaWindow] {
         let recency = Dictionary(uniqueKeysWithValues: recentBundleIdentifiers.enumerated().map { ($0.element, $0.offset) })
         let applications = NSWorkspace.shared.runningApplications
             .filter { $0.activationPolicy == .regular && !$0.isTerminated }
@@ -53,25 +54,32 @@ public final class WindowController {
             }
         let applicationsByProcess = Dictionary(uniqueKeysWithValues: applications.map { ($0.processIdentifier, $0) })
         let serverWindows = allWindowServerWindows()
+        let shareableContent = try? await SCShareableContent.current
         let accessibilityWindows = applications.flatMap { application in
             windows(for: application, includeMinimized: includeMinimized, serverWindows: serverWindows.filter { $0.processIdentifier == application.processIdentifier })
         }
-        let represented = Set(accessibilityWindows.compactMap(\.windowID))
-        let otherSpaceWindows = serverWindows.compactMap { serverWindow -> VelaWindow? in
+        var windowsWithPreviews: [VelaWindow] = []
+        for window in accessibilityWindows {
+            windowsWithPreviews.append(await addingPreview(to: window, from: shareableContent))
+        }
+        let represented = Set(windowsWithPreviews.compactMap(\.windowID))
+        var otherSpaceWindows: [VelaWindow] = []
+        for serverWindow in serverWindows {
             guard !represented.contains(serverWindow.id),
-                  let application = applicationsByProcess[serverWindow.processIdentifier] else { return nil }
-            return VelaWindow(
+                  let application = applicationsByProcess[serverWindow.processIdentifier] else { continue }
+            let window = VelaWindow(
                 id: "cg-\(serverWindow.id)",
                 title: serverWindow.title,
                 applicationName: application.localizedName ?? "Application",
                 bundleIdentifier: application.bundleIdentifier,
-                preview: thumbnail(for: serverWindow.id),
+                preview: nil,
                 element: nil,
                 processIdentifier: serverWindow.processIdentifier,
                 windowID: serverWindow.id
             )
+            otherSpaceWindows.append(await addingPreview(to: window, from: shareableContent))
         }
-        return accessibilityWindows + otherSpaceWindows
+        return windowsWithPreviews + otherSpaceWindows
     }
     public func focus(_ window: VelaWindow) {
         NSRunningApplication(processIdentifier: window.processIdentifier)?.activate()
@@ -79,7 +87,10 @@ public final class WindowController {
     }
     public func moveFocusedWindow(_ action: WindowAction) {
         guard accessibilityTrusted else { return }
-        if action == .focusPrevious { focusPrevious(); return }
+        if action == .focusPrevious {
+            Task { [weak self] in await self?.focusPrevious() }
+            return
+        }
         let system = AXUIElementCreateSystemWide()
         var appValue: CFTypeRef?
         guard AXUIElementCopyAttributeValue(system, kAXFocusedApplicationAttribute as CFString, &appValue) == .success, let appValue else { return }
@@ -117,8 +128,8 @@ public final class WindowController {
         if let positionValue = AXValueCreate(.cgPoint, &position) { AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue) }
         if let sizeValue = AXValueCreate(.cgSize, &size) { AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue) }
     }
-    private func focusPrevious() {
-        let candidates = windows()
+    private func focusPrevious() async {
+        let candidates = await windows()
         guard candidates.count > 1 else { return }
         focus(candidates[1])
     }
@@ -163,8 +174,7 @@ public final class WindowController {
             let minimized = boolAttribute(element, kAXMinimizedAttribute)
             guard includeMinimized || !minimized else { return nil }
             let windowID = frame(of: element).flatMap { matchingWindow(for: $0, in: serverWindows) }
-            let preview = windowID.flatMap { thumbnail(for: $0) }
-            return VelaWindow(id: "\(application.processIdentifier)-\(index)-\(title)", title: title, applicationName: application.localizedName ?? "Application", bundleIdentifier: application.bundleIdentifier, preview: preview, element: element, processIdentifier: application.processIdentifier, windowID: windowID)
+            return VelaWindow(id: "\(application.processIdentifier)-\(index)-\(title)", title: title, applicationName: application.localizedName ?? "Application", bundleIdentifier: application.bundleIdentifier, preview: nil, element: element, processIdentifier: application.processIdentifier, windowID: windowID)
         }
     }
 
@@ -202,8 +212,26 @@ public final class WindowController {
             + abs(candidate.width - target.width) + abs(candidate.height - target.height)
     }
 
-    private func thumbnail(for windowID: CGWindowID) -> NSImage? {
-        guard let image = CGWindowListCreateImage(.null, .optionIncludingWindow, windowID, [.boundsIgnoreFraming, .bestResolution]) else { return nil }
+    private func addingPreview(to window: VelaWindow, from content: SCShareableContent?) async -> VelaWindow {
+        guard let windowID = window.windowID,
+              let captureWindow = content?.windows.first(where: { $0.windowID == windowID }),
+              let image = try? await SCScreenshotManager.captureImage(
+                contentFilter: SCContentFilter(desktopIndependentWindow: captureWindow),
+                configuration: SCStreamConfiguration()
+              ) else { return window }
+        return VelaWindow(
+            id: window.id,
+            title: window.title,
+            applicationName: window.applicationName,
+            bundleIdentifier: window.bundleIdentifier,
+            preview: thumbnail(from: image),
+            element: window.element,
+            processIdentifier: window.processIdentifier,
+            windowID: window.windowID
+        )
+    }
+
+    private func thumbnail(from image: CGImage) -> NSImage {
         let source = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
         let target = CGSize(width: 336, height: 210)
         let thumbnail = NSImage(size: target)
