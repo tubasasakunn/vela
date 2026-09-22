@@ -107,17 +107,20 @@ final class OnboardingController: NSObject, NSWindowDelegate {
 
     private func makeWindowController() -> NSWindowController {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 420),
-            styleMask: [.titled, .closable, .miniaturizable],
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+            styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.title = "Vela"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
         window.isMovable = true
+        window.isMovableByWindowBackground = true
         window.setFrameAutosaveName("VelaSetup")
         window.isReleasedWhenClosed = false
-        window.backgroundColor = .windowBackgroundColor
-        window.contentMinSize = NSSize(width: 520, height: 400)
+        window.backgroundColor = .clear
+        window.contentMinSize = NSSize(width: 700, height: 500)
         window.delegate = self
         return NSWindowController(window: window)
     }
