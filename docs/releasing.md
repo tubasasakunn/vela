@@ -3,8 +3,13 @@
 Pushing a commit to `main` runs `.github/workflows/notarized-release.yml`. The
 workflow chooses the next patch version from the highest `vMAJOR.MINOR.PATCH`
 tag, signs the app and embedded `vela` helper, notarizes and staples the app
-and DMG, verifies both with Gatekeeper, then publishes the DMG, arm64 tarball,
-and `SHA256SUMS` as a GitHub Release.
+and DMG, verifies both with Gatekeeper, then publishes the versioned DMG, a
+same-byte `Vela-latest.dmg` alias, arm64 tarball, and `SHA256SUMS` as a GitHub
+Release. The stable latest-download URL is:
+
+```text
+https://github.com/tubasasakunn/vela/releases/latest/download/Vela-latest.dmg
+```
 
 Re-running a successful or partially successful run for the same commit reuses
 that commit's existing release tag and replaces its assets. Releases are
@@ -42,4 +47,5 @@ script writes it only to a temporary file and removes it on exit.
 
 The job fails unless Apple accepts each notarization, `xcrun stapler validate`
 succeeds, and `spctl` identifies the stapled app and DMG as acceptable. The
-published `SHA256SUMS` is the checksum record for the two downloadable assets.
+published `SHA256SUMS` includes checksums for the versioned DMG, latest DMG
+alias, and arm64 tarball.

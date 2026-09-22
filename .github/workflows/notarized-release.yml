@@ -115,7 +115,11 @@ jobs:
           VERSION: ${{ steps.version.outputs.value }}
         run: |
           tag="v$VERSION"
-          assets=("dist/$VERSION/Vela-$VERSION.dmg" "dist/$VERSION/vela-$VERSION-darwin-arm64.tar.gz" "dist/$VERSION/SHA256SUMS")
+          versioned_dmg="dist/$VERSION/Vela-$VERSION.dmg"
+          latest_dmg="dist/$VERSION/Vela-latest.dmg"
+          cp "$versioned_dmg" "$latest_dmg"
+          shasum -a 256 "$latest_dmg" >> "dist/$VERSION/SHA256SUMS"
+          assets=("$versioned_dmg" "$latest_dmg" "dist/$VERSION/vela-$VERSION-darwin-arm64.tar.gz" "dist/$VERSION/SHA256SUMS")
           if existing_sha="$(git rev-list -n 1 "$tag" 2>/dev/null)"; then
             if [ "$existing_sha" != "$GITHUB_SHA" ]; then
               echo "$tag already points to a different commit; refusing to replace that release" >&2
