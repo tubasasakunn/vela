@@ -109,6 +109,11 @@ Password and other secure text fields are excluded. The palette always
 requires Enter/click to paste; if PCC is unavailable, candidates remain
 available in their configured order.
 
+PCC requires Apple's managed `com.apple.developer.private-cloud-compute`
+entitlement. Set `VELA_ENABLE_PCC=1` only for a release signing identity that
+Apple has approved for this capability; local builds omit it and use the
+deterministic ranking fallback.
+
 ### API
 
 - `Vela.configure({ launcher, clipboard, switcher, contextSnippets })`

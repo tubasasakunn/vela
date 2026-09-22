@@ -27,6 +27,10 @@ fi
 signing_identity="${VELA_SIGNING_IDENTITY:-Developer ID Application: BasaApp Technologies (7NN5KD3TSU)}"
 codesign --force --options runtime --timestamp --sign "$signing_identity" \
   "$app_dir/Contents/Helpers/vela"
-codesign --force --options runtime --timestamp --entitlements Resources/Vela.entitlements \
+pcc_entitlements=()
+if [[ "${VELA_ENABLE_PCC:-0}" == "1" ]]; then
+  pcc_entitlements=(--entitlements Resources/Vela.entitlements)
+fi
+codesign --force --options runtime --timestamp "${pcc_entitlements[@]}" \
   --sign "$signing_identity" "$app_dir"
 echo "Built $app_dir"

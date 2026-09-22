@@ -138,7 +138,7 @@ public enum ConfigurationSkill {
     { name: "Company address", description: "Billing or shipping address fields", content: "〒123-4567\\n東京都…" }
     ```
 
-    Vela sends only each context snippet's `name` and `description` to Apple's Private Cloud Compute (PCC); it never sends a focused field's current value or a snippet's `content`. Secure text fields are excluded; a user must still press Enter or click to paste.
+    Vela sends only each context snippet's `name` and `description` to Apple's Private Cloud Compute (PCC); it never sends a focused field's current value or a snippet's `content`. PCC requires Apple's managed entitlement and falls back to local deterministic ordering when unavailable. Secure text fields are excluded; a user must still press Enter or click to paste.
 
     ## `Vela.hotkey(keys, action)`
 
