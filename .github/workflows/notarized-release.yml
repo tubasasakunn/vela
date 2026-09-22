@@ -19,7 +19,9 @@ concurrency:
 
 jobs:
   release:
-    runs-on: macos-26
+    # PCC is a macOS 27 Foundation Models API, so compile releases with the
+    # Xcode 27 runner rather than the default Xcode 26 toolchain.
+    runs-on: xcode-27
     timeout-minutes: 45
     env:
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
