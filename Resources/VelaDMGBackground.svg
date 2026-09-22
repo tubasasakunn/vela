@@ -7,6 +7,6 @@
     </radialGradient>
   </defs>
   <rect width="540" height="380" fill="url(#surface)"/>
-  <path d="M184 128 C218 52 330 52 369 128" fill="none" stroke="#7654dd" stroke-width="7" stroke-linecap="round" stroke-dasharray="12 13"/>
-  <path d="M349 112 L369 128 L350 140" fill="none" stroke="#7654dd" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M184 128 C218 52 313 52 348 106" fill="none" stroke="#7654dd" stroke-width="7" stroke-linecap="round" stroke-dasharray="12 13"/>
+  <path d="M339 98 L374 132 L329 136 Z" fill="#7654dd"/>
 </svg>
