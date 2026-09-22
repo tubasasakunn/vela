@@ -1,0 +1,3 @@
+Vela を Applications フォルダへドラッグしてください。
+
+Applications に入れた Vela を開くと、ChatGPT / Codex、Claude、Gemini のいずれかを選んで初期設定を始められます。

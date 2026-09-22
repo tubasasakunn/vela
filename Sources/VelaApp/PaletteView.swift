@@ -16,7 +16,7 @@ struct PaletteView: View {
     @ViewBuilder private var surface: some View {
         let content = VStack(spacing: 0) {
             HStack(spacing: 12) {
-                Image(systemName: "sparkle").font(.system(size: 17, weight: .medium)).foregroundStyle(.tint)
+                PaletteBrandIcon()
                 TextField(model.placeholder, text: $model.query)
                     .textFieldStyle(.plain)
                     .font(.system(size: 20, weight: .regular))
@@ -129,3 +129,24 @@ struct PaletteView: View {
     }
 }
 
+private struct PaletteBrandIcon: View {
+    private static let image: NSImage? = {
+        guard let url = Bundle.main.url(forResource: "VelaMenuBarIcon", withExtension: "svg"),
+              let image = NSImage(contentsOf: url) else { return nil }
+        image.isTemplate = true
+        return image
+    }()
+
+    var body: some View {
+        Group {
+            if let image = Self.image {
+                Image(nsImage: image).renderingMode(.template).resizable().scaledToFit()
+            } else {
+                Image(systemName: "sparkle").foregroundStyle(.tint)
+            }
+        }
+        .frame(width: 18, height: 18)
+        .foregroundStyle(.tint)
+        .accessibilityLabel("Vela")
+    }
+}

@@ -4,8 +4,8 @@ import Foundation
 import FoundationModels
 #endif
 
-/// Chooses a configured candidate using the Apple Intelligence on-device model
-/// when it is available. A deterministic order remains available everywhere.
+/// Chooses a configured candidate using Apple Private Cloud Compute (PCC) when
+/// it is available. A deterministic order remains available everywhere.
 public enum ContextSnippetRanker {
     public static func rank(
         _ snippets: [ContextSnippetConfiguration],
@@ -14,8 +14,7 @@ public enum ContextSnippetRanker {
         guard !snippets.isEmpty else { return [] }
         let fallback = rankedByText(snippets, context: context)
         #if canImport(FoundationModels)
-        guard #available(macOS 26.0, *) else { return fallback }
-        guard SystemLanguageModel.default.isAvailable else { return fallback }
+        guard #available(macOS 27.0, *) else { return fallback }
         do {
             let selection = try await select(snippets, context: context)
             guard let selected = snippets.first(where: { $0.name == selection.name }) else { return fallback }
@@ -51,7 +50,7 @@ public enum ContextSnippetRanker {
 }
 
 #if canImport(FoundationModels)
-@available(macOS 26.0, *)
+@available(macOS 27.0, *)
 private extension ContextSnippetRanker {
     @Generable(description: "The name of exactly one supplied context snippet.")
     struct Selection {
@@ -61,12 +60,19 @@ private extension ContextSnippetRanker {
 
     static func select(_ snippets: [ContextSnippetConfiguration], context: FocusedInputContext) async throws -> Selection {
         let choices = snippets.map { "- name: \($0.name)\n  description: \($0.description)" }.joined(separator: "\n")
-        let session = LanguageModelSession(instructions: "Choose the one configured paste candidate that best matches a focused input field. Use only its label and the candidate descriptions. Never infer or request private text. Return exactly one supplied name.")
+        let model = PrivateCloudComputeLanguageModel()
+        guard model.isAvailable else { throw PCCUnavailableError() }
+        let session = LanguageModelSession(
+            model: model,
+            instructions: "Choose the one configured paste candidate that best matches a focused input field. Use only its label and the candidate descriptions. Never infer or request private text. Return exactly one supplied name."
+        )
         let response = try await session.respond(
             to: "Application: \(context.applicationName)\nInput role: \(context.role)\nAccessible field label: \(context.label)\n\nCandidates:\n\(choices)",
             generating: Selection.self
         )
         return response.content
     }
+
+    private struct PCCUnavailableError: Error {}
 }
 #endif

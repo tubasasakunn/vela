@@ -14,9 +14,11 @@ final class PaletteModel: ObservableObject {
     private var fixedTextItems: [PaletteItem] = []
     private var fixedTextFolder: PaletteItem?
     private var fixedTextPath: String?
+    private var searches: [SearchConfiguration] = []
 
     func configureLauncher(configuration: VelaConfiguration) {
         reset(title: "Vela", placeholder: "Search commands and applications")
+        searches = configuration.searches
         var next = configuration.commands.map { PaletteItem(command: $0) }
         if configuration.launcher.applicationSearch {
             next += settingsItems()
@@ -57,12 +59,23 @@ final class PaletteModel: ObservableObject {
     }
 
     var filteredItems: [PaletteItem] {
+        if let search = searchInvocation { return [PaletteItem(search: search.configuration, query: search.query)] }
         let term = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if !term.isEmpty {
             let searchable = fixedTextFolder == nil ? items : clipboardHistoryItems + fixedTextItems
             return searchable.filter { $0.searchText.lowercased().localizedCaseInsensitiveContains(term) }
         }
         return items
+    }
+
+    private var searchInvocation: (configuration: SearchConfiguration, query: String)? {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let separator = trimmed.firstIndex(where: \.isWhitespace) else { return nil }
+        let keyword = String(trimmed[..<separator])
+        let searchQuery = trimmed[separator...].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !searchQuery.isEmpty,
+              let configuration = searches.first(where: { $0.keyword.caseInsensitiveCompare(keyword) == .orderedSame }) else { return nil }
+        return (configuration, searchQuery)
     }
 
     var selectedItem: PaletteItem? {
@@ -181,5 +194,6 @@ final class PaletteModel: ObservableObject {
         fixedTextItems = []
         fixedTextFolder = nil
         fixedTextPath = nil
+        searches = []
     }
 }

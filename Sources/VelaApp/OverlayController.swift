@@ -86,6 +86,7 @@ final class OverlayController {
         hide()
         switch item.kind {
         case let .command(command): _ = try? CommandExecutor.run(command)
+        case let .search(search, query): if let url = search.url(for: query) { NSWorkspace.shared.open(url) }
         case let .application(url): NSWorkspace.shared.openApplication(at: url, configuration: .init())
         case let .settings(url): NSWorkspace.shared.open(url)
         case let .clipboard(entry): paste(entry.value)

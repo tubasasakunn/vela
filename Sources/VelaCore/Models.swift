@@ -6,6 +6,7 @@ public struct VelaConfiguration: Codable, Equatable {
     public var switcher: SwitcherConfiguration
     public var hotkeys: [HotkeyConfiguration]
     public var commands: [CommandConfiguration]
+    public var searches: [SearchConfiguration]
     public var snippets: [SnippetConfiguration]
     /// Text candidates Vela can choose from based on the focused input field.
     public var contextSnippets: [ContextSnippetConfiguration]
@@ -16,6 +17,7 @@ public struct VelaConfiguration: Codable, Equatable {
         switcher: SwitcherConfiguration = .init(),
         hotkeys: [HotkeyConfiguration] = [],
         commands: [CommandConfiguration] = [],
+        searches: [SearchConfiguration] = [],
         snippets: [SnippetConfiguration] = [],
         contextSnippets: [ContextSnippetConfiguration] = []
     ) {
@@ -24,6 +26,7 @@ public struct VelaConfiguration: Codable, Equatable {
         self.switcher = switcher
         self.hotkeys = hotkeys
         self.commands = commands
+        self.searches = searches
         self.snippets = snippets
         self.contextSnippets = contextSnippets
     }
@@ -120,6 +123,29 @@ public struct CommandConfiguration: Codable, Equatable, Identifiable {
     public var action: CommandAction
     public init(id: String, title: String, subtitle: String? = nil, keywords: [String] = [], action: CommandAction) {
         self.id = id; self.title = title; self.subtitle = subtitle; self.keywords = keywords; self.action = action
+    }
+}
+
+/// A keyword-triggered URL search shown when the launcher query begins with that keyword.
+public struct SearchConfiguration: Codable, Equatable, Identifiable {
+    public var id: String { keyword.lowercased() }
+    public var keyword: String
+    public var title: String
+    public var subtitle: String?
+    /// A URL template containing exactly one `{query}` placeholder.
+    public var url: String
+
+    public init(keyword: String, title: String = "Search", subtitle: String? = nil, url: String) {
+        self.keyword = keyword
+        self.title = title
+        self.subtitle = subtitle
+        self.url = url
+    }
+
+    public func url(for query: String) -> URL? {
+        let allowed = CharacterSet.urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&=+?#"))
+        guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
+        return URL(string: url.replacingOccurrences(of: "{query}", with: encodedQuery))
     }
 }
 

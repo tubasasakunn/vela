@@ -73,6 +73,13 @@ Vela.command({
   run: () => Vela.shell("open ~/workspace"),
 });
 
+// Type `g Swift URL` in the launcher, then press Enter.
+Vela.search({
+  keyword: "g",
+  title: "Google",
+  url: "https://www.google.com/search?q={query}",
+});
+
 Vela.snippet({
   id: "reply-thanks",
   title: "Thanks",
@@ -81,8 +88,10 @@ Vela.snippet({
   keywords: ["reply"],
 });
 
-// On macOS 26+ with Apple Intelligence available, Vela uses Apple's on-device
-// Foundation Model to put the most suitable item first for the focused input.
+// On macOS 27+ with PCC available, Vela sends only each candidate's name and
+// description to Apple's Private Cloud Compute to choose the best candidate.
+// The configured content remains local and is resolved only after PCC returns
+// a candidate name.
 Vela.configure({
   contextSnippets: [
     {
@@ -95,10 +104,10 @@ Vela.configure({
 Vela.hotkey("control+option+space", Vela.showContextSnippets);
 ```
 
-Vela never sends a field's current value to the model. Password and other
-secure text fields are excluded. The palette always requires Enter/click to
-paste; if the model is unavailable, candidates remain available in their
-configured order.
+Vela never sends a field's current value or a candidate's content to PCC.
+Password and other secure text fields are excluded. The palette always
+requires Enter/click to paste; if PCC is unavailable, candidates remain
+available in their configured order.
 
 ### API
 
@@ -108,6 +117,7 @@ configured order.
 - `Vela.hotkey(keys, Vela.showContextSnippets)`
 - `Vela.hotkey(keys, () => Vela.window("leftHalf" | "rightHalf" | "toggleMaximize" | "minimize" | "close" | "nextDisplay" | "previousDisplay" | "focusPrevious"))`
 - `Vela.command({ id, title, subtitle?, keywords?, run })`
+- `Vela.search({ keyword, title?, subtitle?, url })`
 - `Vela.snippet({ id, title, value, group?, keywords? })`
 - command actions: `Vela.shell(command)`, `Vela.openURL(url)`, and
   `Vela.application(bundleIdentifier)`

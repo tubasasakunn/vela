@@ -5,6 +5,7 @@ import VelaCore
 struct PaletteItem: Identifiable {
     enum Kind {
         case command(CommandConfiguration)
+        case search(SearchConfiguration, query: String)
         case application(URL)
         case settings(URL)
         case clipboard(ClipboardEntry)
@@ -24,6 +25,7 @@ struct PaletteItem: Identifiable {
         let base = title + " " + (subtitle ?? "")
         switch kind {
         case let .command(command): return base + " " + command.keywords.joined(separator: " ")
+        case .search: return base
         case let .snippet(snippet): return base + " " + snippet.keywords.joined(separator: " ")
         default: return base
         }
@@ -39,6 +41,14 @@ struct PaletteItem: Identifiable {
         symbol = "terminal"
         icon = nil
         kind = .command(command)
+    }
+
+    init(search: SearchConfiguration, query: String) {
+        title = "\(search.title): \(query)"
+        subtitle = search.subtitle ?? "\(search.keyword) · Search"
+        symbol = "magnifyingglass"
+        icon = nil
+        kind = .search(search, query: query)
     }
 
     init(application: String, url: URL, detail: String?) {

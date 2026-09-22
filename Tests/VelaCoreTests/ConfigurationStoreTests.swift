@@ -30,7 +30,9 @@ final class ConfigurationStoreTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: reference.path))
         XCTAssertTrue(try String(contentsOf: agent, encoding: .utf8).contains("vela-configuration"))
         XCTAssertTrue(try String(contentsOf: skill, encoding: .utf8).contains("Vela Configuration"))
-        XCTAssertTrue(try String(contentsOf: reference, encoding: .utf8).contains("Vela.hotkey"))
+        let referenceContents = try String(contentsOf: reference, encoding: .utf8)
+        XCTAssertTrue(referenceContents.contains("Vela.hotkey"))
+        XCTAssertTrue(referenceContents.contains("Vela.search"))
 
         try "user edit".write(to: skill, atomically: true, encoding: .utf8)
         try "user instructions".write(to: agent, atomically: true, encoding: .utf8)
@@ -55,6 +57,7 @@ final class ConfigurationStoreTests: XCTestCase {
         Vela.hotkey("control+option+space", Vela.showContextSnippets);
         Vela.hotkey("control+option+o", Vela.captureTextFromScreen);
         Vela.command({ id: "site", title: "Site", run: () => Vela.openURL("https://example.com") });
+        Vela.search({ keyword: "g", title: "Google", url: "https://www.google.com/search?q={query}" });
         Vela.snippet({ id: "reply", title: "Reply", group: "Work", value: "Thanks!", keywords: ["thanks"] });
         Vela.configure({ contextSnippets: [{ name: "Office", description: "Office address field", content: "Tokyo" }] });
         """.write(to: file, atomically: true, encoding: .utf8)
@@ -63,8 +66,24 @@ final class ConfigurationStoreTests: XCTestCase {
         XCTAssertEqual(configuration.clipboard.limit, 12)
         XCTAssertEqual(configuration.hotkeys, [.init(keys: ["command", "q"], action: .launcher), .init(keys: ["control", "option", "space"], action: .contextSnippets), .init(keys: ["control", "option", "o"], action: .captureTextFromScreen)])
         XCTAssertEqual(configuration.commands.first?.action, .openURL("https://example.com"))
+        XCTAssertEqual(configuration.searches, [.init(keyword: "g", title: "Google", url: "https://www.google.com/search?q={query}")])
         XCTAssertEqual(configuration.snippets, [.init(id: "reply", title: "Reply", value: "Thanks!", group: "Work", keywords: ["thanks"])])
         XCTAssertEqual(configuration.contextSnippets, [.init(name: "Office", content: "Tokyo", description: "Office address field")])
+    }
+
+    func testSearchURLPercentEncodesTheQueryValue() throws {
+        let search = SearchConfiguration(keyword: "g", title: "Google", url: "https://www.google.com/search?q={query}")
+        XCTAssertEqual(search.url(for: "cats & dogs?")?.absoluteString, "https://www.google.com/search?q=cats%20%26%20dogs%3F")
+    }
+
+    func testSearchRequiresOneQueryPlaceholderAndUniqueKeywords() {
+        XCTAssertThrowsError(try ConfigurationStore().validate(.init(searches: [
+            .init(keyword: "g", url: "https://example.com/search"),
+        ])))
+        XCTAssertThrowsError(try ConfigurationStore().validate(.init(searches: [
+            .init(keyword: "g", url: "https://example.com/?q={query}"),
+            .init(keyword: "G", url: "https://example.org/?q={query}"),
+        ])))
     }
 
     func testDuplicateContextSnippetNamesAreRejected() {

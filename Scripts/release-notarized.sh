@@ -76,6 +76,7 @@ COPYFILE_DISABLE=1 tar -C "$work_dir/archive" -czf "$archive_path" Vela.app vela
 
 ditto "$work_dir/archive/Vela.app" "$work_dir/dmg/Vela.app"
 ln -s /Applications "$work_dir/dmg/Applications"
+cp "$project_dir/Resources/DMG-INSTALL.txt" "$work_dir/dmg/README — Vela を Applications へ.txt"
 dmg_path="$release_dir/Vela-${version}.dmg"
 hdiutil create -quiet -volname Vela -srcfolder "$work_dir/dmg" -format UDZO -ov "$dmg_path"
 codesign --force --timestamp \

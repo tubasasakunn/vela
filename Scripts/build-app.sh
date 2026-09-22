@@ -27,5 +27,6 @@ fi
 signing_identity="${VELA_SIGNING_IDENTITY:-Developer ID Application: BasaApp Technologies (7NN5KD3TSU)}"
 codesign --force --options runtime --timestamp --sign "$signing_identity" \
   "$app_dir/Contents/Helpers/vela"
-codesign --force --options runtime --timestamp --sign "$signing_identity" "$app_dir"
+codesign --force --options runtime --timestamp --entitlements Resources/Vela.entitlements \
+  --sign "$signing_identity" "$app_dir"
 echo "Built $app_dir"

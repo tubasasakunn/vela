@@ -26,8 +26,8 @@ public enum ConfigurationSkill {
     `.agent/skills/vela-configuration/references/vela-js-api.md`.
 
     Vela can provide a launcher, clipboard history, global hotkeys, window
-    positioning and switching, text capture from a screen area, searchable
-    commands, fixed-text snippets, and context-aware paste candidates. Ask the
+    positioning and switching, text capture from a screen area, keyword searches,
+    searchable commands, fixed-text snippets, and context-aware paste candidates. Ask the
     user what workflow they want and confirm the proposed hotkeys, commands,
     snippets, and any shell action before writing or changing `vela.js`. Preserve
     unrelated settings. After an approved edit, run `vela check`, then `vela
@@ -38,7 +38,7 @@ public enum ConfigurationSkill {
     private static let source = """
     ---
     name: vela-configuration
-    description: Create, explain, or safely edit Vela's JavaScript configuration (`vela.js`), including hotkeys, commands, snippets, window actions, and focused-field snippets. Use for Vela user configuration, not Vela application-source changes.
+    description: Create, explain, or safely edit Vela's JavaScript configuration (`vela.js`), including hotkeys, commands, keyword searches, snippets, window actions, and focused-field snippets. Use for Vela user configuration, not Vela application-source changes.
     ---
 
     # Vela Configuration
@@ -56,6 +56,7 @@ public enum ConfigurationSkill {
     - Use `Vela.configure` for launcher, clipboard, switcher, and contextual-snippet behavior.
     - Use `Vela.hotkey` for one fixed action bound to a global shortcut.
     - Use `Vela.command` for a searchable palette item that launches a shell command, URL, or installed application.
+    - Use `Vela.search` for a URL search activated by a short keyword followed by a query, such as `g Swift URL`.
     - Use `Vela.snippet` for fixed text selected by the user.
     - Use `contextSnippets` only for a small set of paste candidates whose use can be inferred from a focused field's accessible label or description. Keep them concrete, accurate, and free of secrets.
 
@@ -65,7 +66,7 @@ public enum ConfigurationSkill {
 
     While Vela loads `vela.js`, its JavaScript environment exposes only `Vela`; it cannot read files, access the network, or inspect environment variables. Callback bodies are evaluated to describe an action, so they must return one of Vela's supported action constructors—not arbitrary JavaScript work.
 
-    `Vela.shell` runs its string later as `/bin/zsh -lc`. Treat it as executable user configuration: quote paths correctly, avoid destructive commands unless explicitly requested, and do not interpolate untrusted input. Prefer `Vela.openURL` or `Vela.application` when they express the desired action directly.
+    `Vela.shell` runs its string later as `/bin/zsh -lc`. Treat it as executable user configuration: quote paths correctly, avoid destructive commands unless explicitly requested, and do not interpolate untrusted input. Prefer `Vela.openURL`, `Vela.search`, or `Vela.application` when they express the desired action directly.
 
     ## Validate and activate
 
@@ -77,7 +78,7 @@ public enum ConfigurationSkill {
     private static let apiReference = """
     # Vela JavaScript configuration API
 
-    All declarations are evaluated as `vela.js` loads. Use one or more `Vela.configure(...)` calls; a later call replaces only the sections it supplies. Every `Vela.hotkey`, `Vela.command`, and `Vela.snippet` declaration is collected.
+    All declarations are evaluated as `vela.js` loads. Use one or more `Vela.configure(...)` calls; a later call replaces only the sections it supplies. Every `Vela.hotkey`, `Vela.command`, `Vela.search`, and `Vela.snippet` declaration is collected.
 
     ## Complete minimal example
 
@@ -103,6 +104,12 @@ public enum ConfigurationSkill {
       subtitle: "Open it in Finder",
       keywords: ["project", "code"],
       run: () => Vela.shell("open ~/workspace"),
+    });
+
+    Vela.search({
+      keyword: "g",
+      title: "Google",
+      url: "https://www.google.com/search?q={query}",
     });
 
     Vela.snippet({
@@ -131,7 +138,7 @@ public enum ConfigurationSkill {
     { name: "Company address", description: "Billing or shipping address fields", content: "〒123-4567\\n東京都…" }
     ```
 
-    Vela never sends the focused field's current value to the model. Secure text fields are excluded; a user must still press Enter or click to paste.
+    Vela sends only each context snippet's `name` and `description` to Apple's Private Cloud Compute (PCC); it never sends a focused field's current value or a snippet's `content`. Secure text fields are excluded; a user must still press Enter or click to paste.
 
     ## `Vela.hotkey(keys, action)`
 
@@ -179,6 +186,24 @@ public enum ConfigurationSkill {
     ```
 
     `subtitle` and `keywords` are optional; use a string and an array of strings.
+
+    ## `Vela.search(object)`
+
+    A search appears when the launcher input begins with its `keyword` followed by
+    whitespace and a non-empty query. Enter opens `url` after Vela percent-encodes
+    the query and substitutes it for exactly one `{query}` placeholder. `keyword`
+    must be unique without regard to case; `title` is optional and defaults to
+    `"Search"`.
+
+    ```js
+    // Type: g Swift URL
+    Vela.search({
+      keyword: "g",
+      title: "Google",
+      subtitle: "Search the web",
+      url: "https://www.google.com/search?q={query}",
+    });
+    ```
 
     ## `Vela.snippet(object)`
 

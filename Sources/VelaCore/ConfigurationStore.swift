@@ -41,6 +41,16 @@ public final class ConfigurationStore {
         }
         let ids = config.commands.map(\.id)
         guard Set(ids).count == ids.count else { throw ConfigurationError.invalid("Command ids must be unique") }
+        let searchKeywords = config.searches.map { $0.keyword.lowercased() }
+        guard Set(searchKeywords).count == searchKeywords.count else { throw ConfigurationError.invalid("Search keywords must be unique") }
+        guard config.searches.allSatisfy({
+            !$0.keyword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && $0.url.components(separatedBy: "{query}").count == 2
+                && $0.url(for: "test") != nil
+        }) else {
+            throw ConfigurationError.invalid("Search keyword and title must not be empty; url must contain one {query} placeholder and form a valid URL")
+        }
         let snippetIDs = config.snippets.map(\.id)
         guard Set(snippetIDs).count == snippetIDs.count else { throw ConfigurationError.invalid("Snippet ids must be unique") }
         guard config.snippets.allSatisfy({ !$0.id.isEmpty && !$0.title.isEmpty && !$0.value.isEmpty }) else {
