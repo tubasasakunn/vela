@@ -49,6 +49,98 @@ final class ConfigurationStoreTests: XCTestCase {
         XCTAssertThrowsError(try ConfigurationStore().validate(configuration))
     }
 
+    func testHotkeyAliasesAndModifierOrderShareOneCanonicalShortcut() {
+        let configuration = VelaConfiguration(hotkeys: [
+            .init(keys: ["cmd", "alt", "a"], action: .launcher),
+            .init(keys: ["A", "option", "command"], action: .clipboard),
+        ])
+        XCTAssertThrowsError(try ConfigurationStore().validate(configuration)) { error in
+            XCTAssertEqual(error.localizedDescription, "Hotkey is registered more than once: command+option+a")
+        }
+    }
+
+    func testNumericHotkeysAreAccepted() {
+        let configuration = VelaConfiguration(hotkeys: [
+            .init(keys: ["command", "shift", "0"], action: .captureTextFromScreen),
+            .init(keys: ["control", "9"], action: .launcher),
+        ])
+        XCTAssertNoThrow(try ConfigurationStore().validate(configuration))
+    }
+
+    func testUnsupportedHotkeysAreRejected() {
+        let configuration = VelaConfiguration(hotkeys: [
+            .init(keys: ["command", "f13"], action: .launcher),
+        ])
+        XCTAssertThrowsError(try ConfigurationStore().validate(configuration)) { error in
+            XCTAssertEqual(error.localizedDescription, "Invalid hotkey 'command+f13': key 'f13' is not supported")
+        }
+    }
+
+    func testMalformedHotkeysAreRejectedInsteadOfBeingPartiallyParsed() {
+        let malformed = [
+            ["command", "", "0"],
+            ["command", "cmd", "0"],
+            ["command", "a", "b"],
+            ["a"],
+            ["command", "shift"],
+        ]
+        for keys in malformed {
+            XCTAssertThrowsError(try ConfigurationStore().validate(.init(hotkeys: [
+                .init(keys: keys, action: .launcher),
+            ])), "Expected \(keys) to be rejected")
+        }
+    }
+
+    func testJavaScriptConfigurationRejectsUnknownProperties() throws {
+        XCTAssertThrowsError(try loadConfiguration("Vela.configure({ clipbord: { limit: 12 } });")) { error in
+            XCTAssertTrue(error.localizedDescription.contains("unsupported property 'clipbord'"))
+        }
+        XCTAssertThrowsError(try loadConfiguration("Vela.configure({ clipboard: { limt: 12 } });")) { error in
+            XCTAssertTrue(error.localizedDescription.contains("unsupported property 'limt'"))
+        }
+        XCTAssertThrowsError(try loadConfiguration("Vela.configure({ contextSnippets: [{ name: 'A', description: 'A field', conten: 'A' }] });")) { error in
+            XCTAssertTrue(error.localizedDescription.contains("unsupported property 'conten'"))
+        }
+        XCTAssertThrowsError(try loadConfiguration("Vela.command({ id: 'x', title: 'X', runs: () => Vela.shell('true') });")) { error in
+            XCTAssertTrue(error.localizedDescription.contains("unsupported property 'runs'"))
+        }
+    }
+
+    func testJavaScriptConfigurationRejectsValuesItPreviouslyDiscarded() throws {
+        XCTAssertThrowsError(try loadConfiguration("Vela.command({ id: 'x', title: 'X', keywords: ['ok', 7], run: () => Vela.shell('true') });")) { error in
+            XCTAssertTrue(error.localizedDescription.contains("keywords must be an array of strings"))
+        }
+        XCTAssertThrowsError(try loadConfiguration("Vela.command({ id: 'x', title: 'X', run: Vela.showLauncher });")) { error in
+            XCTAssertTrue(error.localizedDescription.contains("run must return Vela.shell"))
+        }
+        XCTAssertThrowsError(try loadConfiguration("Vela.command({ id: 'x', title: 'X', run: () => Vela.shell(7) });"))
+        XCTAssertThrowsError(try loadConfiguration("Vela.hotkey('command+a', () => Vela.window(7));"))
+        XCTAssertThrowsError(try loadConfiguration("Vela.hotkey('command++0', Vela.showLauncher);"))
+    }
+
+    func testCommandAndSearchValuesMustBeUsableAtRuntime() {
+        XCTAssertThrowsError(try ConfigurationStore().validate(.init(commands: [
+            .init(id: "blank", title: "Blank", action: .shell("  ")),
+        ])))
+        XCTAssertThrowsError(try ConfigurationStore().validate(.init(commands: [
+            .init(id: "site", title: "Site", action: .openURL("example.com")),
+        ])))
+        XCTAssertThrowsError(try ConfigurationStore().validate(.init(searches: [
+            .init(keyword: "web search", url: "https://example.com/?q={query}"),
+        ])))
+    }
+
+    func testShellCommandReportsNonzeroExit() throws {
+        let reported = expectation(description: "nonzero shell exit is reported")
+        let command = CommandConfiguration(id: "failing", title: "Failing", action: .shell("exit 7"))
+        let process = try CommandExecutor.run(command) { error in
+            XCTAssertEqual(error.localizedDescription, "Command 'failing' exited with status 7")
+            reported.fulfill()
+        }
+        wait(for: [reported], timeout: 2)
+        XCTAssertEqual(process?.terminationStatus, 7)
+    }
+
     func testJavaScriptConfigurationUsesVelaActions() throws {
         let file = FileManager.default.temporaryDirectory.appending(path: "vela-test-\(UUID().uuidString).js")
         try """
@@ -101,5 +193,12 @@ final class ConfigurationStoreTests: XCTestCase {
             RecognizedScreenTextLine(text: "left", bounds: .init(x: 0.12, y: 0.75, width: 0.2, height: 0.04)),
         ]
         XCTAssertEqual(ScreenTextCapture.arrangedText(lines), "left right\nsecond")
+    }
+
+    private func loadConfiguration(_ source: String) throws -> VelaConfiguration {
+        let file = FileManager.default.temporaryDirectory.appending(path: "vela-test-\(UUID().uuidString).js")
+        try source.write(to: file, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: file) }
+        return try ConfigurationStore().validate(JavaScriptConfiguration.load(from: file))
     }
 }

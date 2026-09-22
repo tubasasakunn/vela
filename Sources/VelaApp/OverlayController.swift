@@ -13,6 +13,7 @@ final class KeyPanel: NSPanel {
 final class OverlayController {
     private let clipboard: ClipboardHistory
     private let windowController: WindowController
+    private let onError: (Error) -> Void
     private let model = PaletteModel()
     private var previousApplication: NSRunningApplication?
     private var activeMode: OverlayMode?
@@ -32,9 +33,10 @@ final class OverlayController {
         return panel
     }()
 
-    init(clipboard: ClipboardHistory, windowController: WindowController) {
+    init(clipboard: ClipboardHistory, windowController: WindowController, onError: @escaping (Error) -> Void) {
         self.clipboard = clipboard
         self.windowController = windowController
+        self.onError = onError
     }
 
     func show(_ mode: OverlayMode, configuration: VelaConfiguration) {
@@ -85,7 +87,12 @@ final class OverlayController {
         }
         hide()
         switch item.kind {
-        case let .command(command): _ = try? CommandExecutor.run(command)
+        case let .command(command):
+            do {
+                try CommandExecutor.run(command) { [weak self] error in
+                    DispatchQueue.main.async { self?.onError(error) }
+                }
+            } catch { onError(error) }
         case let .search(search, query): if let url = search.url(for: query) { NSWorkspace.shared.open(url) }
         case let .application(url): NSWorkspace.shared.openApplication(at: url, configuration: .init())
         case let .settings(url): NSWorkspace.shared.open(url)

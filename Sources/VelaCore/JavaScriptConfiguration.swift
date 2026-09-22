@@ -72,7 +72,15 @@ enum JavaScriptConfiguration {
         let vela = JSValue(newObjectIn: context)!
         let configure: @convention(block) (JSValue) -> Void = { value in
             do {
-                guard let object = value.toDictionary(), JSONSerialization.isValidJSONObject(object) else { throw ConfigurationError.invalid("Vela.configure expects an object") }
+                let object = try JavaScriptConfiguration.object(
+                    from: value,
+                    api: "Vela.configure",
+                    allowedKeys: ["launcher", "clipboard", "switcher", "contextSnippets"]
+                )
+                try JavaScriptConfiguration.validateConfigureProperties(object)
+                guard JSONSerialization.isValidJSONObject(object) else {
+                    throw ConfigurationError.invalid("Vela.configure expects a JSON-compatible object")
+                }
                 let partial = try JSONDecoder().decode(PartialConfiguration.self, from: JSONSerialization.data(withJSONObject: object))
                 if let launcher = partial.launcher { configuration.launcher = launcher }
                 if let clipboard = partial.clipboard { configuration.clipboard = clipboard }
@@ -80,43 +88,84 @@ enum JavaScriptConfiguration {
                 if let contextSnippets = partial.contextSnippets { configuration.contextSnippets = contextSnippets }
             } catch { failure = error.localizedDescription }
         }
-        let hotkey: @convention(block) (String, JSValue) -> Void = { keys, action in
+        let hotkey: @convention(block) (JSValue, JSValue) -> Void = { keysValue, action in
+            guard keysValue.isString, let keys = keysValue.toString() else {
+                failure = "Vela.hotkey keys must be a string"
+                return
+            }
             guard let descriptor = action.call(withArguments: [])?.toDictionary(), let parsed = JavaScriptConfiguration.action(from: descriptor) else { failure = "Vela.hotkey requires an action returned by Vela"; return }
-            hotkeys.append(.init(keys: keys.split(separator: "+").map { String($0) }, action: parsed))
+            hotkeys.append(.init(keys: keys.split(separator: "+", omittingEmptySubsequences: false).map(String.init), action: parsed))
         }
         let command: @convention(block) (JSValue) -> Void = { value in
-            guard let id = value.forProperty("id")?.toString(), let title = value.forProperty("title")?.toString(), let run = value.forProperty("run"), run.isObject else { failure = "Vela.command requires id, title, and run"; return }
-            guard let descriptor = run.call(withArguments: [])?.toDictionary(), descriptor["type"] != nil else { failure = "Vela.command run must return Vela.shell, Vela.openURL, or Vela.application"; return }
-            let subtitle = value.forProperty("subtitle")?.toString()
-            let keywords = (value.forProperty("keywords")?.toArray() as? [String]) ?? []
-            commands.append(.init(id: id, title: title, subtitle: subtitle, keywords: keywords, action: JavaScriptConfiguration.commandAction(from: descriptor)))
+            do {
+                _ = try JavaScriptConfiguration.object(
+                    from: value,
+                    api: "Vela.command",
+                    allowedKeys: ["id", "title", "subtitle", "keywords", "run"]
+                )
+                let id = try JavaScriptConfiguration.requiredString(value, property: "id", api: "Vela.command")
+                let title = try JavaScriptConfiguration.requiredString(value, property: "title", api: "Vela.command")
+                let subtitle = try JavaScriptConfiguration.optionalString(value, property: "subtitle", api: "Vela.command")
+                let keywords = try JavaScriptConfiguration.optionalStringArray(value, property: "keywords", api: "Vela.command")
+                guard let run = value.forProperty("run"), run.isObject,
+                      let descriptor = run.call(withArguments: [])?.toDictionary(),
+                      let action = JavaScriptConfiguration.commandAction(from: descriptor) else {
+                    throw ConfigurationError.invalid("Vela.command run must return Vela.shell, Vela.openURL, or Vela.application")
+                }
+                commands.append(.init(id: id, title: title, subtitle: subtitle, keywords: keywords, action: action))
+            } catch {
+                failure = error.localizedDescription
+            }
         }
         let search: @convention(block) (JSValue) -> Void = { value in
-            guard let keyword = value.forProperty("keyword")?.toString(),
-                  let url = value.forProperty("url")?.toString() else {
-                failure = "Vela.search requires keyword and url"
-                return
+            do {
+                _ = try JavaScriptConfiguration.object(
+                    from: value,
+                    api: "Vela.search",
+                    allowedKeys: ["keyword", "title", "subtitle", "url"]
+                )
+                let keyword = try JavaScriptConfiguration.requiredString(value, property: "keyword", api: "Vela.search")
+                let url = try JavaScriptConfiguration.requiredString(value, property: "url", api: "Vela.search")
+                let title = try JavaScriptConfiguration.optionalString(value, property: "title", api: "Vela.search") ?? "Search"
+                let subtitle = try JavaScriptConfiguration.optionalString(value, property: "subtitle", api: "Vela.search")
+                searches.append(.init(keyword: keyword, title: title, subtitle: subtitle, url: url))
+            } catch {
+                failure = error.localizedDescription
             }
-            let title = value.forProperty("title")?.toString() ?? "Search"
-            let subtitleValue = value.forProperty("subtitle")
-            let subtitle = subtitleValue?.isUndefined == true ? nil : subtitleValue?.toString()
-            searches.append(.init(keyword: keyword, title: title, subtitle: subtitle, url: url))
         }
         let snippet: @convention(block) (JSValue) -> Void = { value in
-            guard let id = value.forProperty("id")?.toString(),
-                  let title = value.forProperty("title")?.toString(),
-                  let text = value.forProperty("value")?.toString() else {
-                failure = "Vela.snippet requires id, title, and value"
-                return
+            do {
+                _ = try JavaScriptConfiguration.object(
+                    from: value,
+                    api: "Vela.snippet",
+                    allowedKeys: ["id", "title", "value", "group", "keywords"]
+                )
+                let id = try JavaScriptConfiguration.requiredString(value, property: "id", api: "Vela.snippet")
+                let title = try JavaScriptConfiguration.requiredString(value, property: "title", api: "Vela.snippet")
+                let text = try JavaScriptConfiguration.requiredString(value, property: "value", api: "Vela.snippet")
+                let group = try JavaScriptConfiguration.optionalString(value, property: "group", api: "Vela.snippet")
+                let keywords = try JavaScriptConfiguration.optionalStringArray(value, property: "keywords", api: "Vela.snippet")
+                snippets.append(.init(id: id, title: title, value: text, group: group, keywords: keywords))
+            } catch {
+                failure = error.localizedDescription
             }
-            let group = value.forProperty("group")?.toString()
-            let keywords = (value.forProperty("keywords")?.toArray() as? [String]) ?? []
-            snippets.append(.init(id: id, title: title, value: text, group: group, keywords: keywords))
         }
-        let actionObject: @convention(block) (String) -> NSDictionary = { type in ["type": type] }
-        let shellAction: @convention(block) (String) -> NSDictionary = { value in ["type": "shell", "value": value] }
-        let urlAction: @convention(block) (String) -> NSDictionary = { value in ["type": "openURL", "value": value] }
-        let appAction: @convention(block) (String) -> NSDictionary = { value in ["type": "application", "value": value] }
+        let actionObject: @convention(block) (JSValue) -> NSDictionary = { value in
+            guard value.isString, let type = value.toString() else { return ["type": "invalid"] }
+            return ["type": type]
+        }
+        let shellAction: @convention(block) (JSValue) -> NSDictionary = { value in
+            guard value.isString, let string = value.toString() else { return ["type": "invalid"] }
+            return ["type": "shell", "value": string]
+        }
+        let urlAction: @convention(block) (JSValue) -> NSDictionary = { value in
+            guard value.isString, let string = value.toString() else { return ["type": "invalid"] }
+            return ["type": "openURL", "value": string]
+        }
+        let appAction: @convention(block) (JSValue) -> NSDictionary = { value in
+            guard value.isString, let string = value.toString() else { return ["type": "invalid"] }
+            return ["type": "application", "value": string]
+        }
         vela.setObject(configure, forKeyedSubscript: "configure" as NSString)
         vela.setObject(hotkey, forKeyedSubscript: "hotkey" as NSString)
         vela.setObject(command, forKeyedSubscript: "command" as NSString)
@@ -156,12 +205,75 @@ enum JavaScriptConfiguration {
         }
     }
 
-    private static func commandAction(from descriptor: [AnyHashable: Any]) -> CommandAction {
-        let value = descriptor["value"] as? String ?? ""
+    private static func commandAction(from descriptor: [AnyHashable: Any]) -> CommandAction? {
+        guard let value = descriptor["value"] as? String else { return nil }
         switch descriptor["type"] as? String {
+        case "shell": return .shell(value)
         case "openURL": return .openURL(value)
         case "application": return .application(value)
-        default: return .shell(value)
+        default: return nil
         }
+    }
+
+    private static func object(from value: JSValue, api: String, allowedKeys: Set<String>) throws -> [AnyHashable: Any] {
+        guard value.isObject, !value.isNull, !value.isArray, let object = value.toDictionary() else {
+            throw ConfigurationError.invalid("\(api) expects an object")
+        }
+        try validateKeys(of: object, api: api, allowedKeys: allowedKeys)
+        return object
+    }
+
+    private static func validateKeys(of object: [AnyHashable: Any], api: String, allowedKeys: Set<String>) throws {
+        let keys = object.keys.compactMap { $0 as? String }
+        guard keys.count == object.count else { throw ConfigurationError.invalid("\(api) property names must be strings") }
+        let unsupported = Set(keys).subtracting(allowedKeys).sorted()
+        guard unsupported.isEmpty else {
+            throw ConfigurationError.invalid("\(api) contains unsupported property '\(unsupported.joined(separator: "', '"))'")
+        }
+    }
+
+    private static func validateConfigureProperties(_ object: [AnyHashable: Any]) throws {
+        let nestedObjects: [(String, Set<String>)] = [
+            ("launcher", ["applicationSearch"]),
+            ("clipboard", ["limit", "ignoredBundleIdentifiers"]),
+            ("switcher", ["includeMinimizedWindows"]),
+        ]
+        for (name, allowedKeys) in nestedObjects {
+            guard let raw = object[name] else { continue }
+            guard let nested = raw as? [AnyHashable: Any] else { continue }
+            try validateKeys(of: nested, api: "Vela.configure.\(name)", allowedKeys: allowedKeys)
+        }
+        guard let rawSnippets = object["contextSnippets"] as? [Any] else { return }
+        for (index, rawSnippet) in rawSnippets.enumerated() {
+            guard let snippet = rawSnippet as? [AnyHashable: Any] else { continue }
+            try validateKeys(
+                of: snippet,
+                api: "Vela.configure.contextSnippets[\(index)]",
+                allowedKeys: ["name", "description", "content"]
+            )
+        }
+    }
+
+    private static func requiredString(_ object: JSValue, property: String, api: String) throws -> String {
+        guard let value = object.forProperty(property), value.isString, let string = value.toString() else {
+            throw ConfigurationError.invalid("\(api).\(property) must be a string")
+        }
+        return string
+    }
+
+    private static func optionalString(_ object: JSValue, property: String, api: String) throws -> String? {
+        guard let value = object.forProperty(property), !value.isUndefined, !value.isNull else { return nil }
+        guard value.isString, let string = value.toString() else {
+            throw ConfigurationError.invalid("\(api).\(property) must be a string")
+        }
+        return string
+    }
+
+    private static func optionalStringArray(_ object: JSValue, property: String, api: String) throws -> [String] {
+        guard let value = object.forProperty(property), !value.isUndefined, !value.isNull else { return [] }
+        guard value.isArray, let array = value.toArray(), array.allSatisfy({ $0 is String }) else {
+            throw ConfigurationError.invalid("\(api).\(property) must be an array of strings")
+        }
+        return array.compactMap { $0 as? String }
     }
 }

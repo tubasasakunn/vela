@@ -15,8 +15,7 @@ struct VelaCLI {
                 _ = try ConfigurationStore().load()
                 TerminalUI.success("設定を確認しました")
             case "reload":
-                DistributedNotificationCenter.default().post(name: VelaNotifications.reload, object: nil)
-                TerminalUI.success("設定を再読み込みしました")
+                try reload()
             case "doctor": doctor()
             case "open":
                 try FileManager.default.createDirectory(at: VelaPaths.configDirectory, withIntermediateDirectories: true)
@@ -48,7 +47,48 @@ struct VelaCLI {
         guard let id = arguments.first else { throw ConfigurationError.invalid("Usage: vela run <command-id>") }
         let config = try ConfigurationStore().load()
         guard let command = config.commands.first(where: { $0.id == id }) else { throw ConfigurationError.invalid("Unknown command: \(id)") }
-        try CommandExecutor.run(command)?.waitUntilExit()
+        if let process = try CommandExecutor.run(command) {
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else {
+                throw ConfigurationError.invalid("Command '\(id)' exited with status \(process.terminationStatus)")
+            }
+        }
+    }
+
+    private static func reload() throws {
+        _ = try ConfigurationStore().load()
+        let requestID = UUID().uuidString
+        let center = DistributedNotificationCenter.default()
+        var response: Result<Void, Error>?
+        let observer = center.addObserver(forName: VelaNotifications.reloadResult, object: nil, queue: nil) { notification in
+            guard notification.userInfo?["requestID"] as? String == requestID else { return }
+            if notification.userInfo?["success"] as? Bool == true {
+                response = .success(())
+            } else {
+                let message = notification.userInfo?["error"] as? String ?? "The Vela app rejected the configuration"
+                response = .failure(ConfigurationError.invalid(message))
+            }
+        }
+        defer { center.removeObserver(observer) }
+        let deadline = Date().addingTimeInterval(3)
+        var nextRequestDate = Date.distantPast
+        while response == nil, Date() < deadline {
+            if Date() >= nextRequestDate {
+                center.postNotificationName(
+                    VelaNotifications.reload,
+                    object: nil,
+                    userInfo: ["requestID": requestID],
+                    deliverImmediately: true
+                )
+                nextRequestDate = Date().addingTimeInterval(0.25)
+            }
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+        guard let response else {
+            throw ConfigurationError.invalid("Vela is not running or did not respond; the configuration is valid but was not reloaded")
+        }
+        try response.get()
+        TerminalUI.success("設定を再読み込みしました")
     }
 
     private static func clipboard(_ arguments: ArraySlice<String>) {

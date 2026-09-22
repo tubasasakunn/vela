@@ -70,9 +70,9 @@ public enum ConfigurationSkill {
 
     ## Validate and activate
 
-    After editing, run `vela check`. It detects JavaScript/API failures, duplicate hotkeys (case- and modifier-order-insensitive), duplicate command IDs, duplicate snippet IDs, duplicate context-snippet names, blank required fields, and clipboard limits outside 1...10,000. Then use `vela reload` when the Vela app is running.
+    After editing, run `vela check`. It detects JavaScript/API failures, unknown or mistyped properties, malformed and duplicate hotkeys (including modifier aliases), unusable command actions, duplicate IDs/names, blank required fields, and clipboard limits outside 1...10,000. Then use `vela reload` when the Vela app is running; it waits for the app to accept or reject the new configuration.
 
-    For changes that assign a shortcut, tell the user to test it because Vela cannot reliably know whether another macOS app or the system has claimed that shortcut.
+    For changes that assign a shortcut, tell the user to test it. `vela reload` reports registration conflicts that macOS exposes, but another app can still consume the same keystroke without declaring a global registration.
     """
 
     private static let apiReference = """
@@ -123,7 +123,7 @@ public enum ConfigurationSkill {
 
     ## `Vela.configure(object)`
 
-    All properties are optional. Omitted properties retain their existing/default value. Values are decoded strictly.
+    All properties are optional. Omitted properties retain their existing/default value. Values and property names are decoded strictly; an unknown property is an error rather than being ignored.
 
     | Property | Shape | Default | Meaning |
     | --- | --- | --- | --- |
@@ -142,7 +142,8 @@ public enum ConfigurationSkill {
 
     ## `Vela.hotkey(keys, action)`
 
-    `keys` is a `+`-separated string such as `"command+shift+space"`. Use each combination only once; modifier order and letter case do not make it distinct.
+    `keys` is a `+`-separated string such as `"command+shift+space"`. It must contain at least one modifier and exactly one primary key. Empty parts and repeated modifiers are errors. Use each combination only once; modifier aliases (`cmd`/`command`, `alt`/`option`, `ctrl`/`control`), order, and letter case do not make it distinct.
+    Supported primary keys are `a` through `z`, `0` through `9`, `space`, `tab`, `return`, `escape`, `[`, `]`, and the four arrow names `left`, `right`, `up`, and `down`.
 
     ```js
     Vela.hotkey("option+f", Vela.showLauncher);
@@ -192,7 +193,7 @@ public enum ConfigurationSkill {
     A search appears when the launcher input begins with its `keyword` followed by
     whitespace and a non-empty query. Enter opens `url` after Vela percent-encodes
     the query and substitutes it for exactly one `{query}` placeholder. `keyword`
-    must be unique without regard to case; `title` is optional and defaults to
+    must be a single non-blank token and unique without regard to case; `title` is optional and defaults to
     `"Search"`.
 
     ```js
@@ -227,7 +228,7 @@ public enum ConfigurationSkill {
     vela doctor       # show the active configuration path
     vela open         # open the active configuration directory in Finder
     vela check        # parse and validate the active vela.js
-    vela reload       # ask a running Vela app to adopt the configuration
+    vela reload       # wait for the running Vela app to accept the configuration
     ```
 
     `vela init` creates missing starter files but preserves an existing `vela.js` and skill documentation.

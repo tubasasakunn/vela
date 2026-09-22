@@ -28,7 +28,9 @@ final class VelaDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         if installer.installIfNeeded() { return }
         buildMenu()
-        overlay = OverlayController(clipboard: clipboard, windowController: windows)
+        overlay = OverlayController(clipboard: clipboard, windowController: windows) { [weak self] error in
+            self?.presentError(error)
+        }
         hotkeys.onAction = { [weak self] action in DispatchQueue.main.async { self?.execute(action) } }
         let shouldShowSetup = VelaLaunchIntent.shouldShowSetup(arguments: CommandLine.arguments)
         if FileManager.default.fileExists(atPath: VelaPaths.configuration.path) {
@@ -41,7 +43,27 @@ final class VelaDelegate: NSObject, NSApplicationDelegate {
         } else {
             DispatchQueue.main.async { [weak self] in self?.onboarding.showWelcome() }
         }
-        DistributedNotificationCenter.default().addObserver(forName: VelaNotifications.reload, object: nil, queue: .main) { [weak self] _ in self?.reloadConfiguration(showError: true) }
+        DistributedNotificationCenter.default().addObserver(forName: VelaNotifications.reload, object: nil, queue: .main) { [weak self] notification in
+            guard let self else { return }
+            let result = self.reloadConfiguration(showError: false)
+            if let requestID = notification.userInfo?["requestID"] as? String {
+                var userInfo: [String: Any] = ["requestID": requestID]
+                switch result {
+                case .success:
+                    userInfo["success"] = true
+                case let .failure(error):
+                    userInfo["success"] = false
+                    userInfo["error"] = error.localizedDescription
+                }
+                DistributedNotificationCenter.default().postNotificationName(
+                    VelaNotifications.reloadResult,
+                    object: nil,
+                    userInfo: userInfo,
+                    deliverImmediately: true
+                )
+            }
+            if case let .failure(error) = result { self.presentError(error) }
+        }
         DistributedNotificationCenter.default().addObserver(forName: VelaNotifications.requestPermission, object: nil, queue: .main) { [weak self] notification in
             guard let request = notification.userInfo?["permission"] as? String else { return }
             self?.requestPermission(named: request)
@@ -146,14 +168,22 @@ final class VelaDelegate: NSObject, NSApplicationDelegate {
         reloadConfiguration(showError: false)
     }
 
-    private func reloadConfiguration(showError: Bool) {
+    @discardableResult
+    private func reloadConfiguration(showError: Bool) -> Result<Void, Error> {
         do {
-            configuration = try configurationStore.load()
-            clipboard.start(configuration: configuration.clipboard)
-            hotkeys.register(configuration.hotkeys)
+            let nextConfiguration = try configurationStore.load()
+            try hotkeys.register(nextConfiguration.hotkeys)
+            configuration = nextConfiguration
+            clipboard.start(configuration: nextConfiguration.clipboard)
             modifiedDate = (try? FileManager.default.attributesOfItem(atPath: VelaPaths.configuration.path)[.modificationDate]) as? Date
+            return .success(())
         } catch {
-            if showError { presentError(error) }
+            if showError {
+                presentError(error)
+            } else {
+                showCaptureStatus(success: false, message: "設定の再読み込みに失敗しました: \(error.localizedDescription)")
+            }
+            return .failure(error)
         }
     }
 
@@ -168,7 +198,13 @@ final class VelaDelegate: NSObject, NSApplicationDelegate {
         case .quitFrontmostApplication: windows.quitFrontmostApplication()
         case let .command(id):
             guard let command = configuration.commands.first(where: { $0.id == id }) else { return }
-            do { try CommandExecutor.run(command) } catch { presentError(error) }
+            do {
+                try CommandExecutor.run(command) { [weak self] error in
+                    DispatchQueue.main.async { self?.presentError(error) }
+                }
+            } catch {
+                presentError(error)
+            }
         }
     }
 

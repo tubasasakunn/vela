@@ -9,10 +9,17 @@ enum TextPaster {
         into application: NSRunningApplication?,
         delay: TimeInterval = 0
     ) {
-        clipboard.copyText(value)
-        guard let application, application != NSRunningApplication.current else { return }
+        guard let application, application != NSRunningApplication.current else {
+            clipboard.copyText(value)
+            return
+        }
         application.activate()
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: postPasteKeystroke)
+        let targetProcessIdentifier = application.processIdentifier
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == targetProcessIdentifier else { return }
+            clipboard.copyText(value)
+            postPasteKeystroke()
+        }
     }
 
     private static func postPasteKeystroke() {
