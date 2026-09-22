@@ -76,9 +76,14 @@ COPYFILE_DISABLE=1 tar -C "$work_dir/archive" -czf "$archive_path" Vela.app vela
 
 ditto "$work_dir/archive/Vela.app" "$work_dir/dmg/Vela.app"
 ln -s /Applications "$work_dir/dmg/Applications"
-cp "$project_dir/Resources/DMG-INSTALL.txt" "$work_dir/dmg/README — Vela を Applications へ.txt"
+# Finder keeps a DMG window's background and icon positions in .DS_Store.
+# This template is generated for the Vela Installer volume, placing Vela left
+# of Applications with a drag arrow between them.
+layout_volume_name="Vela Installer"
+cp "$project_dir/Resources/VelaDMGTemplate.DS_Store" "$work_dir/dmg/.DS_Store"
+sips -s format tiff "$project_dir/Resources/VelaDMGBackground.svg" --out "$work_dir/dmg/.background.tiff" >/dev/null
 dmg_path="$release_dir/Vela-${version}.dmg"
-hdiutil create -quiet -volname Vela -srcfolder "$work_dir/dmg" -format UDZO -ov "$dmg_path"
+hdiutil create -quiet -volname "$layout_volume_name" -srcfolder "$work_dir/dmg" -format UDZO -ov "$dmg_path"
 codesign --force --timestamp \
   --sign "${VELA_SIGNING_IDENTITY:-Developer ID Application: BasaApp Technologies (7NN5KD3TSU)}" \
   "$dmg_path"
