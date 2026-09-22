@@ -74,17 +74,11 @@ spctl --assess --type execute --verbose=4 "$work_dir/archive/Vela.app"
 archive_path="$release_dir/vela-${version}-darwin-arm64.tar.gz"
 COPYFILE_DISABLE=1 tar -C "$work_dir/archive" -czf "$archive_path" Vela.app vela
 
-ditto "$work_dir/archive/Vela.app" "$work_dir/dmg/Vela.app"
-ln -s /Applications "$work_dir/dmg/Applications"
-# Finder keeps a DMG window's background and icon positions in .DS_Store.
-# This template places Vela left of Applications. The background leads with the
-# self-installing double-click flow while the Applications alias remains as a
-# manual drag-install fallback.
-layout_volume_name="Vela Installer"
-cp "$project_dir/Resources/VelaDMGTemplate.DS_Store" "$work_dir/dmg/.DS_Store"
-sips -s format tiff "$project_dir/Resources/VelaDMGBackground.svg" --out "$work_dir/dmg/.background.tiff" >/dev/null
 dmg_path="$release_dir/Vela-${version}.dmg"
-hdiutil create -quiet -volname "$layout_volume_name" -srcfolder "$work_dir/dmg" -format UDZO -ov "$dmg_path"
+# Generate Finder metadata against this image's own volume and background.
+# A saved .DS_Store can resolve its alias to an older mounted installer.
+zsh "$script_dir/build-dmg.sh" "$work_dir/archive/Vela.app" "$work_dir/Vela.dmg"
+ditto "$work_dir/Vela.dmg" "$dmg_path"
 codesign --force --timestamp \
   --sign "${VELA_SIGNING_IDENTITY:-Developer ID Application: BasaApp Technologies (7NN5KD3TSU)}" \
   "$dmg_path"

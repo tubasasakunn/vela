@@ -45,6 +45,18 @@ script writes it only to a temporary file and removes it on exit.
 
 ## Release evidence
 
+`Scripts/build-dmg.sh <Vela.app> <output.dmg>` builds the same Finder layout
+locally without notarizing or publishing. It installs the pinned packaging tools
+from `Scripts/dmg-requirements.txt` into `.build/dmg-tools`. The background alias
+is generated on each new volume, and the volume name includes the app version
+so an older mounted installer cannot supply the artwork.
+`Scripts/dmg-settings.py` defines the initial window size and icon
+positions; the Finder window remains movable and resizable.
+
+Before release, open the image in Finder and confirm both icons, the drag arrow,
+and the instruction are visible. Drag Vela onto Applications and launch the
+installed copy; check setup navigation and that its title bar can be dragged.
+
 The job fails unless Apple accepts each notarization, `xcrun stapler validate`
 succeeds, and `spctl` identifies the stapled app and DMG as acceptable. The
 published `SHA256SUMS` includes checksums for the versioned DMG, latest DMG

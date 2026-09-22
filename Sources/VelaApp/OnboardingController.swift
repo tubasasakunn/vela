@@ -1,42 +1,28 @@
 import AppKit
+import SwiftUI
 import VelaCore
 
-final class OnboardingController {
+final class OnboardingController: NSObject, NSWindowDelegate {
+    private var windowController: NSWindowController?
+    private var entryPage: OnboardingEntryPage?
+
     func showWelcome() {
-        let alert = NSAlert()
-        alert.messageText = "Vela をあなた向けに整えます"
-        alert.informativeText = "まずAIを開きます。AIが `vela init` で設定ファイルと案内スキルを作り、それを読んでからショートカットや定型文を一緒に決めます。"
-        alert.addButton(withTitle: "AIと設定する")
-        alert.addButton(withTitle: "導入手順を見る")
-        alert.addButton(withTitle: "あとで")
-        switch alert.runModal() {
-        case .alertFirstButtonReturn:
-            showAIChoice()
-        case .alertSecondButtonReturn:
-            NSWorkspace.shared.open(AISetupGuide.url)
-        default:
-            break
-        }
+        entryPage = .welcome
+        show(.welcome)
+    }
+
+    func showInstallationComplete() {
+        entryPage = .installationComplete
+        show(.installationComplete)
     }
 
     func showAIChoice() {
-        let alert = NSAlert()
-        alert.messageText = "設定を相談するAIを選んでください"
-        alert.informativeText = "AIには導入手順と、最初に `vela init` を実行する依頼を渡します。初期化後に作られる AGENT.md とスキルをAIが読んでから設定を進めます。"
-        alert.addButton(withTitle: "ChatGPT / Codex")
-        alert.addButton(withTitle: "Claude")
-        alert.addButton(withTitle: "Gemini")
-        alert.addButton(withTitle: "あとで")
+        entryPage = nil
+        showAIChoicePage()
+    }
 
-        let target: AISetupTarget?
-        switch alert.runModal() {
-        case .alertFirstButtonReturn: target = .chatGPT
-        case .alertSecondButtonReturn: target = .claude
-        case .alertThirdButtonReturn: target = .gemini
-        default: target = nil
-        }
-        guard let target else { return }
-        openConversation(for: target)
+    private func showAIChoicePage() {
+        show(.aiChoice(options: AISetupRecommendation.options(installedTargets: installedTargets())))
     }
 
     private var bundledCLIPath: String {
@@ -49,25 +35,100 @@ final class OnboardingController {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(prompt, forType: .string)
 
+        var openAction: (() -> Void)?
         if target != .gemini,
            let url = AISetupGuide.conversationURL(for: target, helperPath: bundledCLIPath, configurationDirectory: existingDirectory),
            NSWorkspace.shared.urlForApplication(toOpen: url) != nil {
-            NSWorkspace.shared.open(url)
-            return
-        }
-
-        if target == .chatGPT,
-           let application = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.chat") {
-            NSWorkspace.shared.openApplication(at: application, configuration: .init())
+            openAction = { NSWorkspace.shared.open(url) }
+        } else if target == .chatGPT,
+                  let application = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.chat") {
+            openAction = { NSWorkspace.shared.openApplication(at: application, configuration: .init()) }
         } else if target == .gemini,
                   let application = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.google.GeminiMacOS") {
-            NSWorkspace.shared.openApplication(at: application, configuration: .init())
+            openAction = { NSWorkspace.shared.openApplication(at: application, configuration: .init()) }
         }
 
-        let alert = NSAlert()
-        alert.messageText = "依頼文をコピーしました"
-        alert.informativeText = "AIアプリの新しい会話で Command-V を押すと、Velaの導入手順と相談内容を貼り付けられます。"
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
+        show(.handoff(target: target, openedAutomatically: openAction != nil))
+        if let openAction {
+            DispatchQueue.main.async(execute: openAction)
+        }
     }
+
+    private func show(_ page: OnboardingPage) {
+        let windowController = windowController ?? makeWindowController()
+        self.windowController = windowController
+        let view = OnboardingView(
+            page: page,
+            chooseAI: { [weak self] target in self?.openConversation(for: target) },
+            continueToAIChoice: { [weak self] in self?.showAIChoicePage() },
+            backToEntry: { [weak self] in self?.showEntryPage() },
+            backToAIChoice: { [weak self] in self?.showAIChoicePage() },
+            showGuide: { NSWorkspace.shared.open(AISetupGuide.url) },
+            dismiss: { [weak self] in self?.windowController?.close() }
+        )
+        if let host = windowController.contentViewController as? NSHostingController<OnboardingView> {
+            host.rootView = view
+        } else {
+            windowController.contentViewController = NSHostingController(rootView: view)
+        }
+        if windowController.window?.isVisible != true {
+            if windowController.window?.setFrameUsingName("VelaSetup") != true {
+                windowController.window?.center()
+            }
+        }
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        windowController.showWindow(nil)
+        windowController.window?.makeKeyAndOrderFront(nil)
+    }
+
+    private func showEntryPage() {
+        switch entryPage {
+        case .welcome: show(.welcome)
+        case .installationComplete: show(.installationComplete)
+        case nil: windowController?.close()
+        }
+    }
+
+    private func installedTargets() -> Set<AISetupTarget> {
+        var targets = Set<AISetupTarget>()
+        let bundleIdentifiers: [(AISetupTarget, [String])] = [
+            (.chatGPT, ["com.openai.codex", "com.openai.chat"]),
+            (.claude, ["com.anthropic.claudefordesktop"]),
+            (.gemini, ["com.google.GeminiMacOS"]),
+        ]
+        for (target, identifiers) in bundleIdentifiers where identifiers.contains(where: {
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) != nil
+        }) {
+            targets.insert(target)
+        }
+        return targets
+    }
+
+    private func makeWindowController() -> NSWindowController {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 420),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Vela"
+        window.isMovable = true
+        window.setFrameAutosaveName("VelaSetup")
+        window.isReleasedWhenClosed = false
+        window.backgroundColor = .windowBackgroundColor
+        window.contentMinSize = NSSize(width: 520, height: 400)
+        window.delegate = self
+        return NSWindowController(window: window)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        entryPage = nil
+        NSApp.setActivationPolicy(.accessory)
+    }
+}
+
+private enum OnboardingEntryPage {
+    case welcome
+    case installationComplete
 }

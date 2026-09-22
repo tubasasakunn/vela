@@ -34,8 +34,10 @@ final class VelaDelegate: NSObject, NSApplicationDelegate {
         if FileManager.default.fileExists(atPath: VelaPaths.configuration.path) {
             reloadConfiguration(showError: true)
             if shouldShowSetup {
-                DispatchQueue.main.async { [weak self] in self?.onboarding.showAIChoice() }
+                DispatchQueue.main.async { [weak self] in self?.onboarding.showInstallationComplete() }
             }
+        } else if shouldShowSetup {
+            DispatchQueue.main.async { [weak self] in self?.onboarding.showInstallationComplete() }
         } else {
             DispatchQueue.main.async { [weak self] in self?.onboarding.showWelcome() }
         }

@@ -1,6 +1,6 @@
 import Foundation
 
-public enum AISetupTarget: CaseIterable {
+public enum AISetupTarget: CaseIterable, Hashable {
     case chatGPT
     case claude
     case gemini
@@ -11,6 +11,41 @@ public enum AISetupTarget: CaseIterable {
         case .claude: return "Claude"
         case .gemini: return "Gemini"
         }
+    }
+}
+
+public struct AISetupOption: Equatable {
+    public let target: AISetupTarget
+    public let isInstalled: Bool
+    public let isRecommended: Bool
+
+    public init(target: AISetupTarget, isInstalled: Bool, isRecommended: Bool) {
+        self.target = target
+        self.isInstalled = isInstalled
+        self.isRecommended = isRecommended
+    }
+}
+
+public enum AISetupRecommendation {
+    public static func options(installedTargets: Set<AISetupTarget>) -> [AISetupOption] {
+        let orderedTargets = AISetupTarget.allCases.sorted { left, right in
+            if installedTargets.contains(left) != installedTargets.contains(right) {
+                return installedTargets.contains(left)
+            }
+            return order(of: left) < order(of: right)
+        }
+        let recommended = orderedTargets.first(where: installedTargets.contains)
+        return orderedTargets.map { target in
+            AISetupOption(
+                target: target,
+                isInstalled: installedTargets.contains(target),
+                isRecommended: target == recommended
+            )
+        }
+    }
+
+    private static func order(of target: AISetupTarget) -> Int {
+        AISetupTarget.allCases.firstIndex(of: target) ?? .max
     }
 }
 

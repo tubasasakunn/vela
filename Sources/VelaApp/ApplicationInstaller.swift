@@ -19,7 +19,6 @@ final class ApplicationInstaller {
 
         let destinationDirectory = preferredDestinationDirectory()
         let destination = destinationDirectory.appending(path: source.lastPathComponent, directoryHint: .isDirectory)
-        guard confirmMove(destinationExists: fileManager.fileExists(atPath: destination.path)) else { return false }
 
         do {
             try install(source: source, destination: destination)
@@ -28,7 +27,9 @@ final class ApplicationInstaller {
             return true
         } catch {
             presentInstallationError(error)
-            return false
+            // Do not continue setup from the read-only image after a failed copy.
+            NSApp.terminate(nil)
+            return true
         }
     }
 
@@ -41,18 +42,6 @@ final class ApplicationInstaller {
         let userApplications = fileManager.urls(for: .applicationDirectory, in: .userDomainMask)[0]
         try? fileManager.createDirectory(at: userApplications, withIntermediateDirectories: true)
         return userApplications
-    }
-
-    private func confirmMove(destinationExists: Bool) -> Bool {
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.messageText = destinationExists ? "ApplicationsのVelaを更新します" : "VelaをApplicationsに移動します"
-        alert.informativeText = destinationExists
-            ? "既存のVelaを置き換えて自動で開き、AIセットアップを表示します。設定ファイルはそのまま残ります。"
-            : "移動後にVelaを自動で開き、AIセットアップを始めます。"
-        alert.addButton(withTitle: destinationExists ? "更新してセットアップ" : "移動してセットアップ")
-        alert.addButton(withTitle: "ここでは使わない")
-        return alert.runModal() == .alertFirstButtonReturn
     }
 
     private func install(source: URL, destination: URL) throws {

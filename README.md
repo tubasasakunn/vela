@@ -21,9 +21,8 @@ Existing configuration is kept unchanged.
 
 To install the app without Homebrew, download the notarized DMG from the latest
 [GitHub release](https://github.com/tubasasakunn/vela/releases/latest) and open
-Vela from the DMG. Vela offers to move itself to Applications, relaunches from
-there, and opens the AI-guided setup. Dragging Vela to Applications remains
-available as a manual fallback.
+the DMG. Drag Vela to Applications, then open it from Applications to begin setup.
+Opening Vela directly from the DMG also installs it automatically and opens setup.
 
 For development, build it locally:
 

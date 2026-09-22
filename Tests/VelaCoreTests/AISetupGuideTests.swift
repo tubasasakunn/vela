@@ -33,4 +33,27 @@ final class AISetupGuideTests: XCTestCase {
         XCTAssertTrue(prompt.contains("init --directory"))
         XCTAssertTrue(prompt.contains("まだありません"))
     }
+
+    func testInstalledTargetIsRecommendedAndShownFirst() {
+        let options = AISetupRecommendation.options(installedTargets: [.claude])
+
+        XCTAssertEqual(options.map(\.target), [.claude, .chatGPT, .gemini])
+        XCTAssertEqual(options.filter(\.isRecommended).map(\.target), [.claude])
+        XCTAssertTrue(options[0].isInstalled)
+    }
+
+    func testFirstInstalledTargetInStablePriorityOrderIsRecommended() {
+        let options = AISetupRecommendation.options(installedTargets: [.gemini, .chatGPT])
+
+        XCTAssertEqual(options.map(\.target), [.chatGPT, .gemini, .claude])
+        XCTAssertEqual(options.filter(\.isRecommended).map(\.target), [.chatGPT])
+        XCTAssertTrue(options[1].isInstalled)
+    }
+
+    func testNoTargetIsRecommendedWhenNoSupportedAIIsInstalled() {
+        let options = AISetupRecommendation.options(installedTargets: [])
+
+        XCTAssertEqual(options.map(\.target), [.chatGPT, .claude, .gemini])
+        XCTAssertTrue(options.allSatisfy { !$0.isInstalled && !$0.isRecommended })
+    }
 }
