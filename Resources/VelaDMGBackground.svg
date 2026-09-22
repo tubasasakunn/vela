@@ -7,6 +7,8 @@
     </radialGradient>
   </defs>
   <rect width="540" height="380" fill="url(#surface)"/>
-  <path d="M184 128 C218 52 313 52 348 106" fill="none" stroke="#7654dd" stroke-width="7" stroke-linecap="round" stroke-dasharray="12 13"/>
-  <path d="M339 98 L374 132 L329 136 Z" fill="#7654dd"/>
+  <text x="270" y="53" text-anchor="middle" fill="#251942" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="22" font-weight="650">Velaをダブルクリック</text>
+  <text x="270" y="80" text-anchor="middle" fill="#6b5b86" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="12">Applicationsへの移動とセットアップを自動で始めます</text>
+  <path d="M246 101 C222 119 190 135 158 154" fill="none" stroke="#7654dd" stroke-width="6" stroke-linecap="round" stroke-dasharray="10 12"/>
+  <path d="M166 136 L157 155 L178 153" fill="none" stroke="#7654dd" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

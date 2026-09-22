@@ -15,6 +15,7 @@ final class VelaDelegate: NSObject, NSApplicationDelegate {
     private var watcher: Timer?
     private var permissionWatcher: Timer?
     private var contextualPasteTask: Task<Void, Never>?
+    private lazy var installer = ApplicationInstaller()
     private lazy var onboarding = OnboardingController()
     private lazy var menuBarIcon: NSImage? = {
         guard let url = Bundle.main.url(forResource: "VelaMenuBarIcon", withExtension: "svg"),
@@ -25,11 +26,16 @@ final class VelaDelegate: NSObject, NSApplicationDelegate {
     }()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if installer.installIfNeeded() { return }
         buildMenu()
         overlay = OverlayController(clipboard: clipboard, windowController: windows)
         hotkeys.onAction = { [weak self] action in DispatchQueue.main.async { self?.execute(action) } }
+        let shouldShowSetup = VelaLaunchIntent.shouldShowSetup(arguments: CommandLine.arguments)
         if FileManager.default.fileExists(atPath: VelaPaths.configuration.path) {
             reloadConfiguration(showError: true)
+            if shouldShowSetup {
+                DispatchQueue.main.async { [weak self] in self?.onboarding.showAIChoice() }
+            }
         } else {
             DispatchQueue.main.async { [weak self] in self?.onboarding.showWelcome() }
         }

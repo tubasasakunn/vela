@@ -20,8 +20,10 @@ where to create `vela.js`, then guides you through the permissions Vela needs.
 Existing configuration is kept unchanged.
 
 To install the app without Homebrew, download the notarized DMG from the latest
-[GitHub release](https://github.com/tubasasakunn/vela/releases/latest) and drag
-Vela to Applications.
+[GitHub release](https://github.com/tubasasakunn/vela/releases/latest) and open
+Vela from the DMG. Vela offers to move itself to Applications, relaunches from
+there, and opens the AI-guided setup. Dragging Vela to Applications remains
+available as a manual fallback.
 
 For development, build it locally:
 

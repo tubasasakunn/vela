@@ -77,8 +77,9 @@ COPYFILE_DISABLE=1 tar -C "$work_dir/archive" -czf "$archive_path" Vela.app vela
 ditto "$work_dir/archive/Vela.app" "$work_dir/dmg/Vela.app"
 ln -s /Applications "$work_dir/dmg/Applications"
 # Finder keeps a DMG window's background and icon positions in .DS_Store.
-# This template is generated for the Vela Installer volume, placing Vela left
-# of Applications with a drag arrow between them.
+# This template places Vela left of Applications. The background leads with the
+# self-installing double-click flow while the Applications alias remains as a
+# manual drag-install fallback.
 layout_volume_name="Vela Installer"
 cp "$project_dir/Resources/VelaDMGTemplate.DS_Store" "$work_dir/dmg/.DS_Store"
 sips -s format tiff "$project_dir/Resources/VelaDMGBackground.svg" --out "$work_dir/dmg/.background.tiff" >/dev/null
